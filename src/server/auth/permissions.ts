@@ -2,6 +2,7 @@
 // better-auth CLI (`npx auth generate`) for schema generation, which rejects
 // configs whose import graph contains 'server-only'. This file is pure data
 // (no I/O, no secrets) and is never imported from client code.
+import { APIError } from "better-auth/api";
 import { createAccessControl } from "better-auth/plugins/access";
 import {
   defaultStatements,
@@ -77,15 +78,35 @@ export const creator = ac.newRole({
   analytics: ["view"],
 });
 
-// better-auth's built-in "member" role string remains API-accepted by the
-// plugin's invite validation, but it is never offered in the UI (the UI role
-// list is built from the ROLE_LABELS map in src/lib/auth/roles.ts) and maps
-// to NO permissions here.
 export const roles = {
   owner,
   admin,
   approver,
   creator,
 } satisfies Record<Role, unknown>;
+
+/**
+ * ADR-011/A4: reject any role string outside `roles`. better-auth's built-in
+ * "member" passes the org plugin's own validation (it's in the default role
+ * set) but maps to ZERO permissions here — an invite carrying it would create
+ * a member who can do nothing. Wired into the organizationHooks in auth.ts
+ * (invite create/accept, add member, update role). Handles the plugin's
+ * comma-joined multi-role strings ("member,approver"). Empty input is a
+ * no-op: presence validation is the plugin's job.
+ */
+export function assertAssignableRole(
+  role: string | string[] | undefined | null,
+): void {
+  const parts = (Array.isArray(role) ? role : (role ?? "").split(","))
+    .map((part) => part.trim())
+    .filter(Boolean);
+  for (const part of parts) {
+    if (!Object.hasOwn(roles, part)) {
+      throw new APIError("BAD_REQUEST", {
+        message: `Role '${part}' is not assignable in this application.`,
+      });
+    }
+  }
+}
 
 export type { Role };
