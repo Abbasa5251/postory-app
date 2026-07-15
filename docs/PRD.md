@@ -255,6 +255,7 @@ Done in the A2+A3 PR: better-auth **1.7.0-rc.1** instance (`src/server/auth/auth
 - [ ] Consider DB-level composite uniques on `member(organization_id, user_id)` and `account(provider_id, account_id)` during A5 — better-auth enforces these at the app layer and its CLI owns `src/db/schemas/auth.ts` (hand-edits get clobbered on regen), so this needs either an upstream schema request or a deliberate additive migration outside the generated file
 - [ ] Repo uses **npm** (package-lock.json), not pnpm as older notes assumed; `src/db/schemas/` (plural) and split `src/lib/env/{server,client}.ts` are the canonical layouts — AGENTS.md to be reconciled
 - [ ] Nightly + pre-release Playwright workflow (AGENTS.md §11): needs a seeded test DB (Neon branch) + GitHub secrets — pair with A8; local `npm run test:e2e` works today against `.env`
+- [ ] Vercel deploys currently fail at t3-env validation ("Invalid environment variables") — the Vercel project has no env vars set; its build command is `npm run db:migrate && npm run build`, so it also needs a real `DATABASE_URL` (+ `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `RESEND_API_KEY`, and `EMAIL_FROM` for production). Part of the Phase-0 "deploy on merge" exit criterion
 - [ ] Optional: bump `@types/node` `^20` → `^22` to match `.nvmrc` (Node 22 in CI)
 
 ### Epic B — Brands & social accounts (P0)
