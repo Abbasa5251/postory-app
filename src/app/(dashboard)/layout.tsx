@@ -13,9 +13,11 @@ export default async function DashboardLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   const queryClient = getQueryClient();
+  // getSession resolves null for anonymous visitors; ensureSession rejects
+  // only on real failures (DB/auth backend), which must surface, not redirect.
   const session = await ensureSession(queryClient, auth, {
     headers: await headers(),
-  }).catch(() => null);
+  });
 
   if (!session) redirect("/auth/sign-in");
   if (!session.session.activeOrganizationId) redirect("/onboarding");

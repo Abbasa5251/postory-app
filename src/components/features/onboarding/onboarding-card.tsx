@@ -33,18 +33,23 @@ export function OnboardingCard({ userName }: { userName: string }) {
     e.preventDefault();
     setError(undefined);
     setIsCreating(true);
-    // organization.create auto-sets the new org as the session's active org;
-    // a server-side navigation re-runs the (dashboard) layout gate.
-    const { error: createError } = await authClient.organization.create({
-      name,
-      slug,
-    });
-    if (createError) {
-      setError(createError.message);
+    try {
+      // organization.create auto-sets the new org as the session's active org;
+      // a server-side navigation re-runs the (dashboard) layout gate.
+      const { error: createError } = await authClient.organization.create({
+        name,
+        slug,
+      });
+      if (createError) {
+        setError(createError.message);
+        return;
+      }
+      router.replace("/dashboard");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
       setIsCreating(false);
-      return;
     }
-    router.replace("/dashboard");
   };
 
   return (

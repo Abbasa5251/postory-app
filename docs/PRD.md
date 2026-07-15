@@ -4,7 +4,7 @@
 | | |
 |---|---|
 | **Status** | v2.1 — decisions locked via founder Q&A; AI layer moved to OpenRouter |
-| **Last updated** | 2026-07-15 — A2 + A3 shipped (better-auth core + organizations); see Epic A progress log |
+| **Last updated** | 2026-07-15 — A2 + A3 implemented locally in this PR (better-auth core + organizations; deploy pending); see Epic A progress log |
 | **Supersedes** | PRD v1 (Clerk-based draft) |
 | **Builder** | Solo founder, heavy AI-assisted coding |
 
@@ -248,6 +248,7 @@ Done in the A2+A3 PR: better-auth **1.7.0-rc.1** instance (`src/server/auth/auth
 - [ ] better-auth's built-in `member` role string is still accepted by the invite **API** (plugin validation); it is never offered in the UI and maps to zero permissions — add an explicit rejection (hook or action-level guard) during A4/A8
 - [ ] `auth.ts` and `permissions.ts` intentionally omit `import 'server-only'` (the better-auth CLI rejects it during `npm run auth:schema`) — re-check on CLI upgrades whether the restriction is lifted
 - [ ] Clean up dev-DB test rows when convenient: users `delivered@resend.dev`, `delivered+approver@resend.dev`, `delivered+outsider@resend.dev`; orgs "Acme Agency", "Rival Agency"
+- [ ] Consider DB-level composite uniques on `member(organization_id, user_id)` and `account(provider_id, account_id)` during A5 — better-auth enforces these at the app layer and its CLI owns `src/db/schemas/auth.ts` (hand-edits get clobbered on regen), so this needs either an upstream schema request or a deliberate additive migration outside the generated file
 - [ ] Repo uses **npm** (package-lock.json), not pnpm as older notes assumed; `src/db/schemas/` (plural) and split `src/lib/env/{server,client}.ts` are the canonical layouts — AGENTS.md to be reconciled
 
 ### Epic B — Brands & social accounts (P0)

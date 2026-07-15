@@ -11,10 +11,15 @@ export const env = createEnv({
     GOOGLE_CLIENT_ID: z.string().min(1).optional(),
     GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
     RESEND_API_KEY: z.string().min(1),
+    // Verified-domain sender, e.g. "POSTORY <no-reply@postory.app>".
+    // Optional in dev (falls back to the Resend sandbox sender); the email
+    // service refuses the sandbox fallback in production.
+    EMAIL_FROM: z.string().min(1).optional(),
   },
   experimental__runtimeEnv: process.env,
   emptyStringAsUndefined: true,
   // Escape hatch for tooling that loads this module without a full env
-  // (better-auth CLI schema generation, CI builds). Never set in dev/prod runtime.
-  skipValidation: !!process.env.SKIP_ENV_VALIDATION,
+  // (better-auth CLI schema generation, CI builds). Requires the exact value
+  // "1" so SKIP_ENV_VALIDATION=false/0 stays disabled. Never set in dev/prod.
+  skipValidation: process.env.SKIP_ENV_VALIDATION === "1",
 });
