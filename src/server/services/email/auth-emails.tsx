@@ -29,7 +29,11 @@ export async function sendVerificationEmail(input: {
   await send(
     input.to,
     `Verify your email address`,
-    <EmailVerificationEmail appName={APP_NAME} email={input.to} url={input.url} />,
+    <EmailVerificationEmail
+      appName={APP_NAME}
+      email={input.to}
+      url={input.url}
+    />,
   );
 }
 
