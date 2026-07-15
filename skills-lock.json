@@ -109,6 +109,12 @@
       "skillPath": "better-auth/twoFactor/SKILL.md",
       "computedHash": "a6f720042e5a090909e0d519a6a50a7eb8179553cd5315f0bbad852a6d20dac8"
     },
+    "upstash": {
+      "source": "upstash/skills",
+      "sourceType": "github",
+      "skillPath": "skills/upstash/SKILL.md",
+      "computedHash": "17f79bb120b105e34aa18cfcafa69097b59f81212079c8f83795be67032e0faf"
+    },
     "zernio-api": {
       "source": "zernio-dev/zernio-api",
       "sourceType": "github",
