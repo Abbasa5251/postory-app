@@ -1,0 +1,17 @@
+{
+  // Treat CSS files as Tailwind CSS so the Tailwind IntelliSense extension
+  // handles them (completions, hover docs) and VS Code's built-in CSS
+  // language server — which doesn't know @theme/@custom-variant/@apply —
+  // stays out of the way.
+  "files.associations": {
+    "*.css": "tailwindcss"
+  },
+  // Disable the built-in CSS validator entirely; Stylelint (configured in
+  // stylelint.config.mjs with the Tailwind-aware preset) is the one linter.
+  "css.validate": false,
+  "stylelint.validate": ["css", "tailwindcss"],
+  // Tailwind IntelliSense: suggest classes inside string literals too.
+  "editor.quickSuggestions": {
+    "strings": "on"
+  }
+}
