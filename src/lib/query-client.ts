@@ -14,7 +14,8 @@ function makeQueryClient() {
       dehydrate: {
         // Also dehydrate pending queries so streamed SSR data hydrates.
         shouldDehydrateQuery: (query) =>
-          defaultShouldDehydrateQuery(query) || query.state.status === "pending",
+          defaultShouldDehydrateQuery(query) ||
+          query.state.status === "pending",
       },
     },
   });

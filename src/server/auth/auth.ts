@@ -31,9 +31,8 @@ export const auth = betterAuth({
     requireEmailVerification: true, // ADR-011: email verification required
     revokeSessionsOnPasswordReset: true,
     sendResetPassword: async ({ user, url }) => {
-      const { sendResetPasswordEmail } = await import(
-        "@/server/services/email/auth-emails"
-      );
+      const { sendResetPasswordEmail } =
+        await import("@/server/services/email/auth-emails");
       await sendResetPasswordEmail({ to: user.email, url });
     },
   },
@@ -41,9 +40,8 @@ export const auth = betterAuth({
     sendOnSignUp: true,
     autoSignInAfterVerification: true,
     sendVerificationEmail: async ({ user, url }) => {
-      const { sendVerificationEmail } = await import(
-        "@/server/services/email/auth-emails"
-      );
+      const { sendVerificationEmail } =
+        await import("@/server/services/email/auth-emails");
       await sendVerificationEmail({ to: user.email, url });
     },
   },
@@ -90,9 +88,8 @@ export const auth = betterAuth({
       cancelPendingInvitationsOnReInvite: true,
       invitationExpiresIn: 60 * 60 * 48, // 48h (plugin default, made explicit)
       sendInvitationEmail: async (data) => {
-        const { sendOrgInvitationEmail } = await import(
-          "@/server/services/email/auth-emails"
-        );
+        const { sendOrgInvitationEmail } =
+          await import("@/server/services/email/auth-emails");
         await sendOrgInvitationEmail({
           to: data.email,
           // Pending invitations are listed (accept/reject) on the settings

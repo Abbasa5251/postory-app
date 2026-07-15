@@ -1,6 +1,3 @@
 {
-  "recommendations": [
-    "bradlc.vscode-tailwindcss",
-    "stylelint.vscode-stylelint"
-  ]
+  "recommendations": ["bradlc.vscode-tailwindcss", "stylelint.vscode-stylelint"]
 }

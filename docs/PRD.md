@@ -4,7 +4,7 @@
 | | |
 |---|---|
 | **Status** | v2.1 — decisions locked via founder Q&A; AI layer moved to OpenRouter |
-| **Last updated** | 2026-07-15 — A2 + A3 implemented locally in this PR (better-auth core + organizations; deploy pending); see Epic A progress log |
+| **Last updated** | 2026-07-15 — A1 done (tooling & CI PR: Vitest, Playwright, Prettier, ESLint boundaries, GitHub Actions); A2 + A3 merged to `master` in PR #2; see Epic A progress log |
 | **Supersedes** | PRD v1 (Clerk-based draft) |
 | **Builder** | Solo founder, heavy AI-assisted coding |
 
@@ -225,9 +225,9 @@ Trial COGS ceiling ≈ $10/serious evaluator (3 accounts × 14 account-days pror
 ## 8. Feature breakdown (v2 priorities)
 
 ### Epic A — Foundation, auth & tenancy (P0)
-- [ ] A1. Repo: Next 16 + TS strict + Tailwind 4 + shadcn/ui; ESLint/Prettier; Vitest + Playwright; GitHub Actions CI **(P0)** — *partial: repo/TS/Tailwind/shadcn done; Vitest, Playwright, CI, Prettier, ESLint boundary rules pending*
-- [x] A2. **better-auth core:** email+password + Google OAuth, email verification, password reset (Resend templates), session mgmt **(P0)** — *done 2026-07-15, branch `feat/a2-a3-better-auth`. Google OAuth wired but dormant until `GOOGLE_CLIENT_ID/SECRET` land in `.env` (see carry-over)*
-- [x] A3. **Organization plugin:** org create on onboarding (org required — no personal mode), invitations, roles (`owner`/`admin` + custom `approver`/`creator` via access-control statements), active-org switching (better-auth-ui components) **(P0)** — *done 2026-07-15, same branch. Verified end-to-end: sign-up → verify → create org → invite `approver` → accept → active-org auto-set; cross-org member-list probe denied (404-shaped)*
+- [x] A1. Repo: Next 16 + TS strict + Tailwind 4 + shadcn/ui; ESLint/Prettier; Vitest + Playwright; GitHub Actions CI **(P0)** — *done 2026-07-15, branch `feat/a1-tooling-ci`. Vitest 4 (unit + authz projects, node env, smoke suites incl. role-statement seed of the A8 matrix), Playwright (chromium, prod-build webServer, DB-free smoke spec), Prettier + tailwind plugin (vendored/generated/`*.md` ignored, one-time format), ESLint boundary rules (db→DAL with `auth.ts` exception, lib↛server), GitHub Actions merge gate (typecheck·lint·lint:css·format:check·unit+authz·build, Node 22, dummy env). Deliberate omissions: jsdom/RTL (no component-test suite yet), `@/db/schemas` restriction (A5), nightly e2e workflow (see carry-over)*
+- [x] A2. **better-auth core:** email+password + Google OAuth, email verification, password reset (Resend templates), session mgmt **(P0)** — *done 2026-07-15, merged to `master` in PR #2 (`feat/a2-a3-better-auth`). Google OAuth wired but dormant until `GOOGLE_CLIENT_ID/SECRET` land in `.env` (see carry-over)*
+- [x] A3. **Organization plugin:** org create on onboarding (org required — no personal mode), invitations, roles (`owner`/`admin` + custom `approver`/`creator` via access-control statements), active-org switching (better-auth-ui components) **(P0)** — *done 2026-07-15, same PR. Verified end-to-end: sign-up → verify → create org → invite `approver` → accept → active-org auto-set; cross-org member-list probe denied (404-shaped)*
 - [ ] A4. **Auth hardening checklist (ADR-011):** rate limits, session revocation UI, cookie/CSRF review, login audit events **(P0)** — *head start from A2: email verification required, sessions revoked on password reset, CSRF origin check verified live, session-revocation UI shipped via better-auth-ui `/settings/security`. Remaining: Upstash rate limits on auth endpoints, Redis `secondaryStorage`, password policy, login audit events, cookie review*
 - [ ] A5. Drizzle schema + DAL with mandatory org scoping; better-auth tables integrated **(P0)** — *better-auth tables integrated (CLI-generated `src/db/schemas/auth.ts` + migrations, relations merged); `AuthCtx`/`getAuthCtx()` exist in `src/server/auth/context.ts`. Remaining: domain tables + the DAL itself*
 - [ ] A6. Env validation (zod), Sentry + Axiom, error conventions **(P0)** — *env validation done (@t3-oss/env-nextjs + zod, split `src/lib/env/{server,client}.ts`); Sentry, Axiom, error conventions pending*
@@ -236,20 +236,27 @@ Trial COGS ceiling ≈ $10/serious evaluator (3 accounts × 14 account-days pror
 
 #### Epic A progress log & carry-over reminders (added 2026-07-15, A2/A3 PR)
 
-Done in the A2+A3 PR: better-auth **1.7.0-rc.1** instance (`src/server/auth/auth.ts`), role statements (`src/server/auth/permissions.ts` — single source of role truth), `AuthCtx` builder, Resend email service (`src/server/services/email/`), auth schema + 2 migrations applied to Neon, better-auth-ui vendored via shadcn registry, routes `/auth/[path]`, `/onboarding`, gated `/dashboard`, `/settings/[path]`, `/organization/[path]`.
+Done in the A2+A3 PR: better-auth **1.7.0-rc.1** instance (`src/server/auth/auth.ts`), role statements (`src/server/auth/permissions.ts` — single source of role truth), `AuthCtx` builder, Resend email service (`src/server/services/email/`), auth schema + migrations applied to Neon (squashed pre-merge into the single `20260715131216_rainy_reaper` — placeholder `tests` table gone), better-auth-ui vendored via shadcn registry, routes `/auth/[path]`, `/onboarding`, gated `/dashboard`, `/settings/[path]`, `/organization/[path]`.
+
+**Merged 2026-07-15 as PR #2** after review. Post-review fixes on the branch: `(dashboard)` layout no longer swallows `ensureSession` failures (real backend errors surface instead of redirecting to sign-in); onboarding org-create wrapped in try/catch/finally (rejected requests set the error state, submit spinner always resets); `SKIP_ENV_VALIDATION` requires the exact value `"1"`; `EMAIL_FROM` promoted from a code constant to an env var (optional in dev with sandbox fallback, production **throws** on the sandbox sender). Also landed: stylelint (Tailwind-v4-aware) + VS Code workspace settings. Vendored better-auth-ui components deliberately kept byte-identical to the upstream registry.
+
+**A1 PR (2026-07-15, `feat/a1-tooling-ci`):** Vitest 4.1.10 (`vitest.config.mts`, `unit` + `authz` projects, node environment, `@` alias + `server-only` stub, `SKIP_ENV_VALIDATION=1`), smoke suites in `tests/unit` (cn) and `tests/authz` (role-statement seed of the A8 matrix), Playwright 1.61 (`tests/e2e/smoke.spec.ts`, chromium, prod-build webServer), Prettier 3.9.5 + tailwindcss plugin (one-time format commit; `.prettierignore` protects vendored auth components, generated schema/migrations, `*.md`), ESLint boundary rules via core `no-restricted-imports` (negative-tested: alias + relative escapes both fire; `auth.ts` allowlisted), `.nvmrc` 22, `.github/workflows/ci.yml` merge gate. CI build proven locally with `.env` absent and dummy env only.
 
 **Carry-over — do later, don't forget:**
 - [ ] Bump `better-auth` (+ `auth` CLI dev-dep + `@better-auth/drizzle-adapter`) from **1.7.0-rc.1 → 1.7.0 stable** when released; then **remove `.npmrc` `legacy-peer-deps=true`** (only needed because prerelease versions don't satisfy better-auth-ui's `>=1.6.19` peer ranges) and **remove the `kysely: ^0.28.17` pin** in package.json (kysely-adapter@rc imports root constants that kysely 0.29 moved to `kysely/migration`)
 - [ ] Paste `GOOGLE_CLIENT_ID/SECRET` into `.env` (redirect URI `{BETTER_AUTH_URL}/api/auth/callback/google`) — Google button appears automatically, then verify the OAuth flow end-to-end
-- [ ] Verify a sending domain in Resend and replace the sandbox sender `onboarding@resend.dev` in `src/server/services/email/client.ts` (`EMAIL_FROM`); sandbox delivers only to the account owner's address
+- [ ] Verify a sending domain in Resend and set the `EMAIL_FROM` env var to a verified-domain sender (it's an env var now, not a code constant; dev falls back to the sandbox `onboarding@resend.dev`, which delivers only to the account owner's address — production refuses to boot on the sandbox fallback)
 - [ ] Browser pass of the real email links (verification + password reset) — API flows verified, inbox links not yet clicked
-- [ ] ESLint guardrails from AGENTS.md §6: `no-restricted-imports` confining `@/db/db` to the DAL (allowlist exception: `src/server/auth/auth.ts`, which the drizzle adapter requires) + lib↛server boundary rules (belongs to A1/A5)
+- [x] ESLint guardrails from AGENTS.md §6: `no-restricted-imports` confining `@/db/db` to the DAL (allowlist exception: `src/server/auth/auth.ts`, which the drizzle adapter requires) + lib↛server boundary rules — *done in the A1 PR (also catches relative-path escapes like `../db/db`)*
 - [ ] `getAuthCtx()` returns `brandIds: "all"` placeholder — resolve from `brand_members` when B5 lands
 - [ ] better-auth's built-in `member` role string is still accepted by the invite **API** (plugin validation); it is never offered in the UI and maps to zero permissions — add an explicit rejection (hook or action-level guard) during A4/A8
-- [ ] `auth.ts` and `permissions.ts` intentionally omit `import 'server-only'` (the better-auth CLI rejects it during `npm run auth:schema`) — re-check on CLI upgrades whether the restriction is lifted
+- [ ] `auth.ts` and `permissions.ts` intentionally omit `import 'server-only'` (the better-auth CLI rejects it during schema generation) — re-check on CLI upgrades whether the restriction is lifted. Schema regen runs via the existing `npm run auth:schema` script (an earlier note here wrongly claimed the script was dropped; only a duplicate `auth:generate` was)
 - [ ] Clean up dev-DB test rows when convenient: users `delivered@resend.dev`, `delivered+approver@resend.dev`, `delivered+outsider@resend.dev`; orgs "Acme Agency", "Rival Agency"
 - [ ] Consider DB-level composite uniques on `member(organization_id, user_id)` and `account(provider_id, account_id)` during A5 — better-auth enforces these at the app layer and its CLI owns `src/db/schemas/auth.ts` (hand-edits get clobbered on regen), so this needs either an upstream schema request or a deliberate additive migration outside the generated file
 - [ ] Repo uses **npm** (package-lock.json), not pnpm as older notes assumed; `src/db/schemas/` (plural) and split `src/lib/env/{server,client}.ts` are the canonical layouts — AGENTS.md to be reconciled
+- [ ] Nightly + pre-release Playwright workflow (AGENTS.md §11): needs a seeded test DB (Neon branch) + GitHub secrets — pair with A8; local `npm run test:e2e` works today against `.env`
+- [ ] Vercel deploys currently fail at t3-env validation ("Invalid environment variables") — the Vercel project has no env vars set; its build command is `npm run db:migrate && npm run build`, so it also needs a real `DATABASE_URL` (+ `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `RESEND_API_KEY`, and `EMAIL_FROM` for production). Part of the Phase-0 "deploy on merge" exit criterion
+- [ ] Optional: bump `@types/node` `^20` → `^22` to match `.nvmrc` (Node 22 in CI)
 
 ### Epic B — Brands & social accounts (P0)
 - [ ] B1. Brand CRUD → creates primary Zernio profile (ADR-009) **(P0)**
@@ -358,7 +365,7 @@ As v1 (perf, reliability, scale, cost-control targets) with revisions:
 
 ### Phase 0 — Foundations (wk 1–2)
 - [ ] Epic A complete (incl. auth hardening A4 + authz suite A8) · job-runner spike decided · design tokens · staging/prod + CI/CD + Sentry
-- **Exit:** deploy on merge; sign up, verify, create org, invite member, switch org — all real. *(2026-07-15: the auth half of the exit criterion works locally — A2/A3 done; A1 tooling, A4–A8, deploys pending.)*
+- **Exit:** deploy on merge; sign up, verify, create org, invite member, switch org — all real. *(2026-07-15: the auth half of the exit criterion works locally — A1/A2/A3 done incl. CI merge gate; A4–A8 and deploys pending.)*
 
 ### Phase 1 — Brands, accounts, composer (wk 3–6)
 - [ ] Epic B (B1–B5) · Epic C (C1–C5, incl. video upload)

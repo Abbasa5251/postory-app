@@ -1,0 +1,61 @@
+# Merge gate per AGENTS.md §14: typecheck + lint + unit + authz + build
+# (plus lint:css and format:check — cheap and keep the repo style honest).
+# E2E (Playwright) is nightly + pre-release, NOT part of this gate; the
+# nightly workflow lands once a seeded test DB + secrets exist (see PRD
+# Epic A carry-overs).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: this job only reads the repo. Third-party package code
+# runs in later steps (npm ci/build), so the token must not carry more.
+permissions:
+  contents: read
+
+env:
+  # Valid-shaped dummies so `next build` module evaluation succeeds without
+  # real secrets. Nothing connects at build time (neon-http connects
+  # per-query), but neon() validates the DATABASE_URL shape at construction
+  # and better-auth reads its secret at init. SKIP_ENV_VALIDATION is
+  # deliberately NOT set: t3-env validation stays on, so a newly added
+  # required env fails CI loudly instead of at deploy.
+  DATABASE_URL: "postgresql://ci:ci@localhost:5432/postory"
+  BETTER_AUTH_SECRET: "ci-only-dummy-secret-0123456789abcdef"
+  BETTER_AUTH_URL: "http://localhost:3000"
+  RESEND_API_KEY: "re_ci_dummy"
+  # Defense-in-depth: the email client refuses the sandbox sender under
+  # production NODE_ENV. It is only reachable via dynamic import in auth
+  # callbacks (never executed at build) — this keeps that true even if a
+  # future refactor makes the import static.
+  EMAIL_FROM: "Postory CI <ci@example.com>"
+
+jobs:
+  ci:
+    name: typecheck · lint · test · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # No later step needs git credentials; don't leave the token in
+          # .git/config where npm-executed code could read it.
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      # .npmrc legacy-peer-deps=true is picked up automatically
+      # (better-auth 1.7.0-rc peer ranges need it)
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run lint:css
+      - run: npm run format:check
+      - run: npm test
+      - run: npm run build
