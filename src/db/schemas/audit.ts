@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  check,
   index,
   jsonb,
   pgTable,
@@ -49,6 +50,13 @@ export const auditLog = pgTable(
       .notNull(),
   },
   (table) => [
+    // Belt-and-suspenders (review finding, PR #4): the DAL validates actor
+    // types via zod, but the DB enforces the closed set too. Extending the
+    // set = new migration (deliberate — it's a stable, tiny contract).
+    check(
+      "audit_log_actor_type_check",
+      sql`${table.actorType} IN ('user', 'member', 'portal_token', 'system')`,
+    ),
     index("audit_log_org_created_idx").on(table.orgId, table.createdAt),
     index("audit_log_action_created_idx").on(table.action, table.createdAt),
     index("audit_log_actor_idx").on(table.actorId),

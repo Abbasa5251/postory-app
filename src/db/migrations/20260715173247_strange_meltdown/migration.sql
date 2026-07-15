@@ -9,7 +9,8 @@ CREATE TABLE "audit_log" (
 	"ip_address" text,
 	"user_agent" text,
 	"metadata" jsonb,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "audit_log_actor_type_check" CHECK ("actor_type" IN ('user', 'member', 'portal_token', 'system'))
 );
 --> statement-breakpoint
 CREATE INDEX "audit_log_org_created_idx" ON "audit_log" ("org_id","created_at");--> statement-breakpoint

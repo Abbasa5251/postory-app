@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "ac316274-1935-4721-a10d-c1887dc0f241",
+  "id": "92bc5b6e-dc39-4e25-9d4d-fd1ba1d6eb4a",
   "prevIds": [
     "f15334b3-5eab-4711-ab89-7e84c280a5d8"
   ],
@@ -1375,6 +1375,13 @@
       "schema": "public",
       "table": "user",
       "entityType": "uniques"
+    },
+    {
+      "value": "\"actor_type\" IN ('user', 'member', 'portal_token', 'system')",
+      "name": "audit_log_actor_type_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "audit_log"
     }
   ],
   "renames": []
