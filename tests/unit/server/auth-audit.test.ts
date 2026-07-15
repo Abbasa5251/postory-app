@@ -150,4 +150,31 @@ describe("authAuditEventSchema", () => {
       authAuditEventSchema.parse({ action: "auth.made_up" }),
     ).toThrow();
   });
+
+  it("strips metadata keys outside the allowlist (nothing but email/code/statusCode persists)", () => {
+    const parsed = authAuditEventSchema.parse({
+      action: "auth.sign_in.failed",
+      metadata: {
+        email: "a@b.co",
+        code: "INVALID_EMAIL_OR_PASSWORD",
+        statusCode: 401,
+        password: "should-never-persist",
+        nested: { token: "should-never-persist" },
+      },
+    });
+    expect(parsed.metadata).toEqual({
+      email: "a@b.co",
+      code: "INVALID_EMAIL_OR_PASSWORD",
+      statusCode: 401,
+    });
+    expect(JSON.stringify(parsed)).not.toContain("should-never-persist");
+  });
+
+  it("truncates an oversized attacker-controlled email in metadata", () => {
+    const parsed = authAuditEventSchema.parse({
+      action: "auth.password_reset.requested",
+      metadata: { email: "x".repeat(10_000) },
+    });
+    expect(parsed.metadata?.email).toHaveLength(320);
+  });
 });

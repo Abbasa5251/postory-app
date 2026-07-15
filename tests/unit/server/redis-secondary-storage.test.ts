@@ -149,6 +149,21 @@ describe("upstashSecondaryStorage", () => {
     await expect(storage.increment("rl", 60)).rejects.toThrow("redis down");
   });
 
+  it("set fails open: a Redis write failure must not break sign-in (DB is authoritative)", async () => {
+    vi.spyOn(fake, "set").mockRejectedValue(new Error("redis down"));
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    await expect(storage.set("k", "v", 60)).resolves.toBeUndefined();
+    await expect(storage.set("k", "v")).resolves.toBeUndefined();
+    expect(consoleError).toHaveBeenCalledTimes(2);
+  });
+
+  it("delete fails CLOSED: revocation errors propagate (no silently-alive sessions)", async () => {
+    vi.spyOn(fake, "del").mockRejectedValueOnce(new Error("redis down"));
+    await expect(storage.delete("k")).rejects.toThrow("redis down");
+  });
+
   it("passes the ttl through to the atomic script call", async () => {
     const evalSpy = vi.spyOn(fake, "eval");
     await storage.increment("rl", 900);

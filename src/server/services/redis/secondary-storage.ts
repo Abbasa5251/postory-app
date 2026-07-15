@@ -47,13 +47,22 @@ export function upstashSecondaryStorage(
     // window).
     increment: async (key, ttl) =>
       redis.eval<[number], number>(INCREMENT_SCRIPT, [PREFIX + key], [ttl]),
+    // Fail open like `get`: set is session write-back — Postgres is the
+    // source of truth (session.storeSessionInDatabase) and reads fall back
+    // to the DB, so a failed Redis write must not turn sign-in into a 500.
     set: async (key, value, ttl) => {
-      if (ttl !== undefined) {
-        await redis.set(PREFIX + key, value, { ex: ttl });
-      } else {
-        await redis.set(PREFIX + key, value);
+      try {
+        if (ttl !== undefined) {
+          await redis.set(PREFIX + key, value, { ex: ttl });
+        } else {
+          await redis.set(PREFIX + key, value);
+        }
+      } catch (error) {
+        console.error("[redis] set failed; relying on DB fallback", error);
       }
     },
+    // Errors propagate: delete is session revocation — failing open would
+    // leave a revoked session alive in Redis until it expires.
     delete: async (key) => {
       await redis.del(PREFIX + key);
     },
