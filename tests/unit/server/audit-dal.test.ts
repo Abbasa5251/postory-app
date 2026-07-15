@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { auditLog } from "@/db/schemas/audit";
-import { recordAuthEvent } from "@/server/dal/audit";
+import {
+  buildAuditInsert,
+  recordAuditEvent,
+  recordAuthEvent,
+} from "@/server/dal/audit";
+import type { MemberCtx, SystemCtx } from "@/server/dal/types";
 
 // The db client is mocked, not imported: the real @/db/db constructs a neon()
 // client at module load (no URL under SKIP_ENV_VALIDATION), and the AGENTS.md
@@ -64,5 +69,104 @@ describe("recordAuthEvent", () => {
       recordAuthEvent({ action: "auth.sign_up", userId: "user_1" }),
     ).resolves.toBeUndefined();
     expect(console.error).toHaveBeenCalledOnce();
+  });
+});
+
+const memberCtx: MemberCtx = {
+  orgId: "org_1",
+  memberId: "member_1",
+  role: "admin",
+  brandIds: "all",
+};
+
+const systemCtx: SystemCtx = {
+  orgId: "org_1",
+  role: "system",
+  brandIds: "all",
+  jobName: "generation/image.requested",
+};
+
+describe("recordAuditEvent / buildAuditInsert", () => {
+  it("maps a member ctx to ('member', memberId) with orgId from the ctx", async () => {
+    await recordAuditEvent(memberCtx, {
+      action: "brand.create",
+      entityType: "brand",
+      entityId: "brand_1",
+    });
+
+    expect(insert).toHaveBeenCalledExactlyOnceWith(auditLog);
+    expect(values).toHaveBeenCalledExactlyOnceWith({
+      orgId: "org_1",
+      actorType: "member",
+      actorId: "member_1",
+      action: "brand.create",
+      entityType: "brand",
+      entityId: "brand_1",
+      ipAddress: null,
+      userAgent: null,
+      metadata: null,
+    });
+  });
+
+  it("maps a system ctx to ('system', jobName)", async () => {
+    await recordAuditEvent(systemCtx, {
+      action: "post.publish_result",
+      entityType: "post",
+      entityId: "post_1",
+    });
+
+    expect(values.mock.calls[0]![0]).toMatchObject({
+      orgId: "org_1",
+      actorType: "system",
+      actorId: "generation/image.requested",
+    });
+  });
+
+  it("tenancy and actor cannot be spoofed via the event — they only come from ctx", async () => {
+    await recordAuditEvent(memberCtx, {
+      action: "brand.update",
+      entityType: "brand",
+      entityId: "brand_1",
+      // orgId/actor fields don't exist on OrgAuditEvent; anything smuggled
+      // in is stripped by the schema.
+      ...({ orgId: "org_evil", actorId: "someone_else" } as object),
+    });
+
+    expect(values.mock.calls[0]![0]).toMatchObject({
+      orgId: "org_1",
+      actorId: "member_1",
+    });
+  });
+
+  it("THROWS on an invalid action (fail-closed — the deliberate opposite of recordAuthEvent)", async () => {
+    await expect(
+      recordAuditEvent(memberCtx, {
+        action: "NotDotNamespaced",
+        entityType: "brand",
+        entityId: "b1",
+      }),
+    ).rejects.toThrow();
+    expect(insert).not.toHaveBeenCalled();
+  });
+
+  it("propagates a failed insert instead of swallowing it", async () => {
+    values.mockRejectedValueOnce(new Error("db down"));
+    await expect(
+      recordAuditEvent(memberCtx, {
+        action: "brand.delete",
+        entityType: "brand",
+        entityId: "b1",
+      }),
+    ).rejects.toThrow("db down");
+  });
+
+  it("buildAuditInsert builds the insert without needing an await (batch composition)", () => {
+    buildAuditInsert(memberCtx, {
+      action: "post.approve",
+      entityType: "post",
+      entityId: "post_1",
+    });
+    expect(insert).toHaveBeenCalledExactlyOnceWith(auditLog);
+    expect(values).toHaveBeenCalledOnce();
   });
 });

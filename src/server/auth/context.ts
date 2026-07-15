@@ -1,19 +1,12 @@
 import "server-only";
 import { headers } from "next/headers";
 import type { Role } from "@/lib/auth/roles";
+import type { MemberCtx, SystemCtx } from "@/server/dal/types";
 import { auth } from "./auth";
 
-/**
- * AGENTS.md §6: the authenticated tenancy context every DAL method takes as
- * its first argument. Constructed here and nowhere else. orgId comes from the
- * better-auth session — client-supplied org/brand ids are never trusted.
- */
-export type AuthCtx = {
-  orgId: string;
-  memberId: string;
-  role: Role;
-  brandIds: string[] | "all";
-};
+// AGENTS.md §6: the ctx types live with the DAL contract (dal/types.ts);
+// construction happens here and nowhere else.
+export type { AuthCtx, MemberCtx, SystemCtx } from "@/server/dal/types";
 
 export class UnauthorizedError extends Error {
   constructor(message = "Not authenticated or no active organization") {
@@ -22,7 +15,12 @@ export class UnauthorizedError extends Error {
   }
 }
 
-export async function getAuthCtx(): Promise<AuthCtx> {
+/**
+ * The one place a member tenancy context is built (AGENTS.md §6.3): orgId
+ * comes from the better-auth session — client-supplied org/brand ids are
+ * never trusted.
+ */
+export async function getAuthCtx(): Promise<MemberCtx> {
   const h = await headers();
   const session = await auth.api.getSession({ headers: h });
   if (!session?.session.activeOrganizationId) {
@@ -36,8 +34,23 @@ export async function getAuthCtx(): Promise<AuthCtx> {
     orgId: session.session.activeOrganizationId,
     memberId: member.id,
     role: member.role as Role,
-    // B5: resolve creator brand access from brand_members once that table
-    // exists; until then every role sees all brands.
+    // B5: resolve creator brand access from brand_members (the table exists
+    // since A5, but nothing populates it yet); until then every role sees
+    // all brands.
     brandIds: "all",
   };
+}
+
+/**
+ * Background jobs only (AGENTS.md §6.7): full brand access, audited as
+ * actor_type 'system' with jobName as the actor id — required so every job
+ * self-attributes in audit_log.
+ *
+ * Pure construction, no existence check: this file cannot touch the db (the
+ * §6 ESLint boundary), and jobs are trusted callers. orgId MUST originate
+ * from an event our own server code emitted (Inngest payloads are
+ * zod-validated at the job edge) — never from client input.
+ */
+export function getSystemCtx(orgId: string, jobName: string): SystemCtx {
+  return { orgId, role: "system", brandIds: "all", jobName };
 }
