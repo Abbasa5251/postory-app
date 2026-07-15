@@ -18,7 +18,10 @@ export default defineConfig({
     // `next build`/`next start` load .env automatically for local runs.
     command: "npm run build && npm run start",
     url: "http://localhost:3000",
-    reuseExistingServer: !process.env.CI,
+    // Reuse is opt-in (PW_REUSE_SERVER=1) rather than default-on locally:
+    // a running dev server on :3000 would silently replace the production
+    // artifact this suite claims to test.
+    reuseExistingServer: process.env.PW_REUSE_SERVER === "1",
     timeout: 180_000,
   },
 });
