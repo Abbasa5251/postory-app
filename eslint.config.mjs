@@ -13,6 +13,16 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
   ]),
+  {
+    // Vendored better-auth-ui registry components (installed via
+    // `npx shadcn add https://better-auth-ui.com/r/...`). Kept byte-identical
+    // to upstream so future registry re-adds stay clean diffs — style rules
+    // that upstream doesn't satisfy are relaxed here only.
+    files: ["src/components/auth/**"],
+    rules: {
+      "react-hooks/set-state-in-effect": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

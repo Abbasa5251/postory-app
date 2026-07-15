@@ -4,7 +4,7 @@
 | | |
 |---|---|
 | **Status** | v2.1 — decisions locked via founder Q&A; AI layer moved to OpenRouter |
-| **Last updated** | 2026-07-15 |
+| **Last updated** | 2026-07-15 — A2 + A3 implemented locally in this PR (better-auth core + organizations; deploy pending); see Epic A progress log |
 | **Supersedes** | PRD v1 (Clerk-based draft) |
 | **Builder** | Solo founder, heavy AI-assisted coding |
 
@@ -84,7 +84,7 @@ AI video generation (post-launch, D4) · X/Twitter, Pinterest, Bluesky, Reddit, 
 ## 3. Architecture decision records
 
 - [ ] **ADR-001 — Our DB is the source of truth for posts.** Zernio post created only at schedule time; `zernio_post_id` stored; status driven by webhooks + 15-min reconciliation sweep. Zernio isolated behind a `publishing/` module.
-- [ ] **ADR-002 (rev) — Tenancy via better-auth organizations.** Org = agency. `organization`, `member`, `invitation`, `session` tables owned by better-auth migrations in our Postgres. Active org read from `session.activeOrganizationId`. **Every domain table carries `org_id` FK → better-auth `organization.id`; every query flows through a data-access layer requiring `orgId`.** No webhook mirroring (Clerk's Epic-A4 deleted). This DAL is now the tenant-isolation *security boundary* — see NFR + authz test suite.
+- [ ] **ADR-002 (rev) — Tenancy via better-auth organizations.** Org = agency. `organization`, `member`, `invitation`, `session` tables owned by better-auth migrations in our Postgres. Active org read from `session.activeOrganizationId`. **Every domain table carries `org_id` FK → better-auth `organization.id`; every query flows through a data-access layer requiring `orgId`.** No webhook mirroring (Clerk's Epic-A4 deleted). This DAL is now the tenant-isolation *security boundary* — see NFR + authz test suite. *(2026-07-15: better-auth org tables live in Neon; active-org set on sign-in/create/accept verified. DAL itself pending — A5.)*
 - [ ] **ADR-003 — All generation & publishing async via Inngest.** Actions enqueue and return job ids; workers do the work; UI polls job status (2s while live). No AI/publish call in a request handler.
 - [ ] **ADR-004 — Direct Stripe.** Tier products (monthly + annual) + credit-pack one-off prices + `$9/mo` extra-account subscription item. Entitlements mirrored to `subscriptions` table; hot-path gates read our DB.
 - [ ] **ADR-005 — Append-only credit ledger.** Reserve before generation → settle/refund after. Balance = materialized SUM per org.
@@ -94,7 +94,7 @@ AI video generation (post-launch, D4) · X/Twitter, Pinterest, Bluesky, Reddit, 
 - [ ] **ADR-009 (new) — Brand ↔ Zernio profile is 1:N.** Each brand owns a primary profile; connecting a second account of an already-connected platform auto-creates an overflow profile (`profile_no` 2, 3, …). Invisible to users; `social_accounts.zernio_profile_id` records placement. Zero cost impact (billing is per account, profiles unlimited). Remove the auto-overflow codepath if R1 verification shows multiple same-platform accounts per profile are allowed.
 - [ ] **ADR-010 (new) — Trial enforcement server-side.** Trial state on the org row (`trial_ends_at`, `trial_state`). Inngest scheduled functions: T-3d nudge email → expiry: flip to `read_only` → +7d: disconnect Zernio accounts (stops account-day billing) + notify. Reactivation on subscribe restores connections list for one-click reconnect.
 - [ ] **ADR-012 (new) — All AI inference through OpenRouter (D11).** Text via chat completions (AI SDK OpenRouter provider); images via the dedicated Image API; video post-launch. One `OPENROUTER_API_KEY`. Model ids + prices live in `credit_rates`; per-model capabilities are read from OpenRouter's discovery endpoints, never hardcoded. `src/server/services/openrouter/` is the only module that knows the wire format — preserving a direct-provider escape hatch. Accepted trade-off: one gateway for all AI; mitigated by OpenRouter's multi-provider routing/fallbacks and by not billing failed generations (simplifies credit refunds).
-- [ ] **ADR-011 (new) — Auth security is ours now.** better-auth hardening checklist is a P0 deliverable: email verification required, password policy, rate-limited auth endpoints (Upstash), session revocation UI, `secondaryStorage` (Redis) for session lookups, secure cookie config, CSRF posture verified, audit login events. Enterprise SSO/SAML via better-auth SSO plugin (post-launch).
+- [ ] **ADR-011 (new) — Auth security is ours now.** better-auth hardening checklist is a P0 deliverable: email verification required, password policy, rate-limited auth endpoints (Upstash), session revocation UI, `secondaryStorage` (Redis) for session lookups, secure cookie config, CSRF posture verified, audit login events. Enterprise SSO/SAML via better-auth SSO plugin (post-launch). *(2026-07-15: verification-required, reset-revokes-sessions, CSRF origin check and revocation UI already in via A2/A3 — see Epic A progress log; rest lands with A4.)*
 
 ---
 
@@ -225,14 +225,31 @@ Trial COGS ceiling ≈ $10/serious evaluator (3 accounts × 14 account-days pror
 ## 8. Feature breakdown (v2 priorities)
 
 ### Epic A — Foundation, auth & tenancy (P0)
-- [ ] A1. Repo: Next 16 + TS strict + Tailwind 4 + shadcn/ui; ESLint/Prettier; Vitest + Playwright; GitHub Actions CI **(P0)**
-- [ ] A2. **better-auth core:** email+password + Google OAuth, email verification, password reset (Resend templates), session mgmt **(P0)**
-- [ ] A3. **Organization plugin:** org create on onboarding (org required — no personal mode), invitations, roles (`owner`/`admin` + custom `approver`/`creator` via access-control statements), active-org switching (better-auth-ui components) **(P0)**
-- [ ] A4. **Auth hardening checklist (ADR-011):** rate limits, session revocation UI, cookie/CSRF review, login audit events **(P0)**
-- [ ] A5. Drizzle schema + DAL with mandatory org scoping; better-auth tables integrated **(P0)**
-- [ ] A6. Env validation (zod), Sentry + Axiom, error conventions **(P0)**
-- [ ] A7. App shell: brand sidebar, org switcher, credits meter, trial banner, empty states **(P0)**
-- [ ] A8. **Authz test suite:** per-role access matrix tests incl. cross-org isolation (the ADR-002 security boundary) **(P0)**
+- [ ] A1. Repo: Next 16 + TS strict + Tailwind 4 + shadcn/ui; ESLint/Prettier; Vitest + Playwright; GitHub Actions CI **(P0)** — *partial: repo/TS/Tailwind/shadcn done; Vitest, Playwright, CI, Prettier, ESLint boundary rules pending*
+- [x] A2. **better-auth core:** email+password + Google OAuth, email verification, password reset (Resend templates), session mgmt **(P0)** — *done 2026-07-15, branch `feat/a2-a3-better-auth`. Google OAuth wired but dormant until `GOOGLE_CLIENT_ID/SECRET` land in `.env` (see carry-over)*
+- [x] A3. **Organization plugin:** org create on onboarding (org required — no personal mode), invitations, roles (`owner`/`admin` + custom `approver`/`creator` via access-control statements), active-org switching (better-auth-ui components) **(P0)** — *done 2026-07-15, same branch. Verified end-to-end: sign-up → verify → create org → invite `approver` → accept → active-org auto-set; cross-org member-list probe denied (404-shaped)*
+- [ ] A4. **Auth hardening checklist (ADR-011):** rate limits, session revocation UI, cookie/CSRF review, login audit events **(P0)** — *head start from A2: email verification required, sessions revoked on password reset, CSRF origin check verified live, session-revocation UI shipped via better-auth-ui `/settings/security`. Remaining: Upstash rate limits on auth endpoints, Redis `secondaryStorage`, password policy, login audit events, cookie review*
+- [ ] A5. Drizzle schema + DAL with mandatory org scoping; better-auth tables integrated **(P0)** — *better-auth tables integrated (CLI-generated `src/db/schemas/auth.ts` + migrations, relations merged); `AuthCtx`/`getAuthCtx()` exist in `src/server/auth/context.ts`. Remaining: domain tables + the DAL itself*
+- [ ] A6. Env validation (zod), Sentry + Axiom, error conventions **(P0)** — *env validation done (@t3-oss/env-nextjs + zod, split `src/lib/env/{server,client}.ts`); Sentry, Axiom, error conventions pending*
+- [ ] A7. App shell: brand sidebar, org switcher, credits meter, trial banner, empty states **(P0)** — *org switcher + user button live in the `(dashboard)` header; rest pending*
+- [ ] A8. **Authz test suite:** per-role access matrix tests incl. cross-org isolation (the ADR-002 security boundary) **(P0)** — *manual curl matrix passed on 2026-07-15 (approver `post:approve` ✓ / `brand:create` ✗, cross-org denial); automated suite pending*
+
+#### Epic A progress log & carry-over reminders (added 2026-07-15, A2/A3 PR)
+
+Done in the A2+A3 PR: better-auth **1.7.0-rc.1** instance (`src/server/auth/auth.ts`), role statements (`src/server/auth/permissions.ts` — single source of role truth), `AuthCtx` builder, Resend email service (`src/server/services/email/`), auth schema + 2 migrations applied to Neon, better-auth-ui vendored via shadcn registry, routes `/auth/[path]`, `/onboarding`, gated `/dashboard`, `/settings/[path]`, `/organization/[path]`.
+
+**Carry-over — do later, don't forget:**
+- [ ] Bump `better-auth` (+ `auth` CLI dev-dep + `@better-auth/drizzle-adapter`) from **1.7.0-rc.1 → 1.7.0 stable** when released; then **remove `.npmrc` `legacy-peer-deps=true`** (only needed because prerelease versions don't satisfy better-auth-ui's `>=1.6.19` peer ranges) and **remove the `kysely: ^0.28.17` pin** in package.json (kysely-adapter@rc imports root constants that kysely 0.29 moved to `kysely/migration`)
+- [ ] Paste `GOOGLE_CLIENT_ID/SECRET` into `.env` (redirect URI `{BETTER_AUTH_URL}/api/auth/callback/google`) — Google button appears automatically, then verify the OAuth flow end-to-end
+- [ ] Verify a sending domain in Resend and replace the sandbox sender `onboarding@resend.dev` in `src/server/services/email/client.ts` (`EMAIL_FROM`); sandbox delivers only to the account owner's address
+- [ ] Browser pass of the real email links (verification + password reset) — API flows verified, inbox links not yet clicked
+- [ ] ESLint guardrails from AGENTS.md §6: `no-restricted-imports` confining `@/db/db` to the DAL (allowlist exception: `src/server/auth/auth.ts`, which the drizzle adapter requires) + lib↛server boundary rules (belongs to A1/A5)
+- [ ] `getAuthCtx()` returns `brandIds: "all"` placeholder — resolve from `brand_members` when B5 lands
+- [ ] better-auth's built-in `member` role string is still accepted by the invite **API** (plugin validation); it is never offered in the UI and maps to zero permissions — add an explicit rejection (hook or action-level guard) during A4/A8
+- [ ] `auth.ts` and `permissions.ts` intentionally omit `import 'server-only'` (the better-auth CLI rejects it during `npm run auth:schema`) — re-check on CLI upgrades whether the restriction is lifted
+- [ ] Clean up dev-DB test rows when convenient: users `delivered@resend.dev`, `delivered+approver@resend.dev`, `delivered+outsider@resend.dev`; orgs "Acme Agency", "Rival Agency"
+- [ ] Consider DB-level composite uniques on `member(organization_id, user_id)` and `account(provider_id, account_id)` during A5 — better-auth enforces these at the app layer and its CLI owns `src/db/schemas/auth.ts` (hand-edits get clobbered on regen), so this needs either an upstream schema request or a deliberate additive migration outside the generated file
+- [ ] Repo uses **npm** (package-lock.json), not pnpm as older notes assumed; `src/db/schemas/` (plural) and split `src/lib/env/{server,client}.ts` are the canonical layouts — AGENTS.md to be reconciled
 
 ### Epic B — Brands & social accounts (P0)
 - [ ] B1. Brand CRUD → creates primary Zernio profile (ADR-009) **(P0)**
@@ -341,7 +358,7 @@ As v1 (perf, reliability, scale, cost-control targets) with revisions:
 
 ### Phase 0 — Foundations (wk 1–2)
 - [ ] Epic A complete (incl. auth hardening A4 + authz suite A8) · job-runner spike decided · design tokens · staging/prod + CI/CD + Sentry
-- **Exit:** deploy on merge; sign up, verify, create org, invite member, switch org — all real.
+- **Exit:** deploy on merge; sign up, verify, create org, invite member, switch org — all real. *(2026-07-15: the auth half of the exit criterion works locally — A2/A3 done; A1 tooling, A4–A8, deploys pending.)*
 
 ### Phase 1 — Brands, accounts, composer (wk 3–6)
 - [ ] Epic B (B1–B5) · Epic C (C1–C5, incl. video upload)
