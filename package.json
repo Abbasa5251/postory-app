@@ -12,8 +12,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio",
-    "auth:generate": "SKIP_ENV_VALIDATION=1 auth generate --config src/server/auth/auth.ts --output src/db/schemas/auth.ts --y"
+    "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
