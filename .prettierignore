@@ -17,3 +17,7 @@ src/db/migrations/
 
 # hand-formatted docs (PRD/AGENTS tables must not be reflowed)
 *.md
+
+# installed agent skills (vendored third-party content, untracked)
+.agents/
+.claude/

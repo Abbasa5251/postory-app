@@ -15,6 +15,12 @@ export const env = createEnv({
     // Optional in dev (falls back to the Resend sandbox sender); the email
     // service refuses the sandbox fallback in production.
     EMAIL_FROM: z.string().min(1).optional(),
+    // Upstash Redis (ADR-011: auth rate limits + better-auth secondaryStorage).
+    // Optional in dev (no secondaryStorage; rate limiting is production-only
+    // by better-auth default); the redis service throws at boot in production
+    // when unset.
+    UPSTASH_REDIS_REST_URL: z.url().optional(),
+    UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
   },
   experimental__runtimeEnv: process.env,
   emptyStringAsUndefined: true,

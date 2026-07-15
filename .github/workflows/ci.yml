@@ -35,6 +35,11 @@ env:
   # callbacks (never executed at build) — this keeps that true even if a
   # future refactor makes the import static.
   EMAIL_FROM: "Postory CI <ci@example.com>"
+  # The redis service throws at module load in production NODE_ENV when
+  # unset (ADR-011), and `next build` evaluates auth.ts — dummies keep the
+  # build honest without connecting (the client is constructed lazily).
+  UPSTASH_REDIS_REST_URL: "https://ci-dummy.upstash.io"
+  UPSTASH_REDIS_REST_TOKEN: "ci_dummy_token"
 
 jobs:
   ci:

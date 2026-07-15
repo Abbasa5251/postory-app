@@ -32,6 +32,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Installed agent skills — vendored third-party content (untracked, but
+    // present in local checkouts; their example code breaks `npm run lint`).
+    ".agents/**",
+    ".claude/**",
   ]),
   {
     // Vendored better-auth-ui registry components (installed via
