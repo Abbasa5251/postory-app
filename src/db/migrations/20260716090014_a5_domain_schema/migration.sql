@@ -348,7 +348,6 @@ ALTER TABLE "post_versions" ADD CONSTRAINT "post_versions_org_id_organization_id
 ALTER TABLE "post_versions" ADD CONSTRAINT "post_versions_created_by_member_id_fkey" FOREIGN KEY ("created_by") REFERENCES "member"("id") ON DELETE SET NULL;--> statement-breakpoint
 ALTER TABLE "post_versions" ADD CONSTRAINT "post_versions_org_post_fkey" FOREIGN KEY ("org_id","post_id") REFERENCES "posts"("org_id","id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "posts" ADD CONSTRAINT "posts_org_id_organization_id_fkey" FOREIGN KEY ("org_id") REFERENCES "organization"("id") ON DELETE CASCADE;--> statement-breakpoint
-ALTER TABLE "posts" ADD CONSTRAINT "posts_current_version_id_post_versions_id_fkey" FOREIGN KEY ("current_version_id") REFERENCES "post_versions"("id") ON DELETE SET NULL;--> statement-breakpoint
 ALTER TABLE "posts" ADD CONSTRAINT "posts_created_by_member_id_fkey" FOREIGN KEY ("created_by") REFERENCES "member"("id") ON DELETE SET NULL;--> statement-breakpoint
 ALTER TABLE "posts" ADD CONSTRAINT "posts_internal_approved_by_member_id_fkey" FOREIGN KEY ("internal_approved_by") REFERENCES "member"("id") ON DELETE SET NULL;--> statement-breakpoint
 ALTER TABLE "posts" ADD CONSTRAINT "posts_org_brand_fkey" FOREIGN KEY ("org_id","brand_id") REFERENCES "brands"("org_id","id") ON DELETE CASCADE;--> statement-breakpoint

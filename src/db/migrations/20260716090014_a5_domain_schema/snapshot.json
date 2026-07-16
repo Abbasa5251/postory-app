@@ -1,10 +1,10 @@
 {
-  "id": "8691d1c2-1df0-46d0-bb62-dc34cfe5f265",
-  "prevIds": [
-    "ccb4f530-0925-4e0d-ab7c-461f3c579ddf"
-  ],
   "version": "8",
   "dialect": "postgres",
+  "id": "1760fd2c-c677-40e9-9a63-846ae91c8c95",
+  "prevIds": [
+    "92bc5b6e-dc39-4e25-9d4d-fd1ba1d6eb4a"
+  ],
   "ddl": [
     {
       "isRlsEnabled": false,
@@ -5584,23 +5584,6 @@
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "name": "posts_org_id_organization_id_fkey",
-      "entityType": "fks",
-      "schema": "public",
-      "table": "posts"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
-        "current_version_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "post_versions",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "SET NULL",
-      "name": "posts_current_version_id_post_versions_id_fkey",
       "entityType": "fks",
       "schema": "public",
       "table": "posts"

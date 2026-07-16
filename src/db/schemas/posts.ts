@@ -11,7 +11,6 @@ import {
   unique,
   uniqueIndex,
   uuid,
-  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { member } from "./auth";
 import { brands, socialAccounts } from "./brands";
@@ -39,16 +38,12 @@ export const posts = pgTable(
     orgId: orgId(),
     brandId: uuid("brand_id").notNull(),
     status: text("status").notNull().default("DRAFT"),
-    // Circular FK with post_versions — the AnyPgColumn-annotated thunk breaks
-    // the type-inference cycle; drizzle-kit emits FKs as trailing ALTERs, so
-    // both constraints land cleanly in one migration. Nullable: the post row
-    // exists before its first version. Single-column FK by necessity: a
-    // same-post composite tie would need ON DELETE SET NULL on post id too —
-    // flagged in PR notes.
-    currentVersionId: uuid("current_version_id").references(
-      (): AnyPgColumn => postVersions.id,
-      { onDelete: "set null" },
-    ),
+    // No FK here on purpose: the ownership constraint is composite —
+    // (id, current_version_id) → post_versions(post_id, id) with PG-15+
+    // column-list ON DELETE SET NULL (current_version_id), which drizzle
+    // can't express — it lives in the posts_current_version_fkey custom
+    // migration. Nullable: the post row exists before its first version.
+    currentVersionId: uuid("current_version_id"),
     createdBy: memberRef("created_by"),
     internalApprovedBy: memberRef("internal_approved_by"),
     scheduledFor: timestamp("scheduled_for", { withTimezone: true }),
