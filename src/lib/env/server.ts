@@ -16,9 +16,9 @@ export const env = createEnv({
     // service refuses the sandbox fallback in production.
     EMAIL_FROM: z.string().min(1).optional(),
     // Upstash Redis (ADR-011: auth rate limits + better-auth secondaryStorage).
-    // Optional in dev (no secondaryStorage; rate limiting is production-only
-    // by better-auth default); the redis service throws at boot in production
-    // when unset.
+    // Optional in dev and local/CI builds (no secondaryStorage; rate limiting
+    // is production-only by better-auth default); the redis service throws in
+    // production (Vercel build or server boot) when unset.
     UPSTASH_REDIS_REST_URL: z.url().optional(),
     UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
   },
