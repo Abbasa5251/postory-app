@@ -5,6 +5,7 @@
 // at module load: the client is constructed lazily on first use.
 import { Redis } from "@upstash/redis";
 import { env } from "@/lib/env/server";
+import { shouldEnforceProductionEnv } from "@/lib/env/runtime";
 
 export function redisConfigured(): boolean {
   return Boolean(env.UPSTASH_REDIS_REST_URL && env.UPSTASH_REDIS_REST_TOKEN);
@@ -12,9 +13,10 @@ export function redisConfigured(): boolean {
 
 // ADR-011: production must have Redis — auth rate limiting and session
 // secondaryStorage silently degrading would be a hardening regression. Same
-// fail-fast-at-boot pattern as the EMAIL_FROM guard in services/email.
-// NODE_ENV read directly: build-time constant, not modeled by t3-env.
-if (process.env.NODE_ENV === "production" && !redisConfigured()) {
+// fail-fast pattern as the EMAIL_FROM guard in services/email. Fires on
+// Vercel builds and at production server boot (via src/instrumentation.ts),
+// but not on local/CI `next build`, which runs without deploy secrets.
+if (shouldEnforceProductionEnv() && !redisConfigured()) {
   throw new Error(
     "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set in production (ADR-011 auth hardening: rate limits + session secondary storage).",
   );
