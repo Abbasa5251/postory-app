@@ -47,7 +47,10 @@ const APP_ACTIONS: Record<AppResource, readonly string[]> = {
 // Allowed grants transcribed BY HAND from the AGENTS.md §7 table (the spec —
 // deliberately not derived from permissions.ts, which would be tautological).
 // Anything absent here is expected-denied.
-const EXPECTED: Record<Role, Partial<Record<AppResource, readonly string[]>>> = {
+const EXPECTED: Record<
+  Role,
+  Partial<Record<AppResource, readonly string[]>>
+> = {
   owner: {
     brand: ["create", "update", "delete", "read"],
     account: ["connect", "disconnect"],
@@ -104,8 +107,7 @@ describe("§7 org administration — owner/admin only", () => {
     }
   }
 
-  // owner + admin can administer the org. Representative subset both hold
-  // (admin lacks organization:delete — that's owner-only, not asserted here).
+  // owner + admin can administer the org. Representative subset both hold.
   const ADMIN_GRANTS: Record<string, string[]> = {
     organization: ["update"],
     member: ["create"],
@@ -118,6 +120,15 @@ describe("§7 org administration — owner/admin only", () => {
       });
     }
   }
+
+  // organization:delete is owner-only (adminAc lacks it) — kept outside the
+  // shared loop above, asserted both ways.
+  it("owner MAY organization:delete", () => {
+    expect(grants("owner", "organization", ["delete"])).toBe(true);
+  });
+  it("admin may NOT organization:delete", () => {
+    expect(grants("admin", "organization", ["delete"])).toBe(false);
+  });
 });
 
 // ── §7 portal-token column — deferred to Epic E ────────────────────────────

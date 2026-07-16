@@ -7,13 +7,17 @@ import type { MemberCtx, SystemCtx } from "@/server/dal/types";
  * what a case cares about.
  */
 
-/** A member ctx; defaults to a `creator` with full brand access. */
+/**
+ * A member ctx; defaults to a `creator` scoped to one assigned brand — the
+ * realistic creator shape (creators are narrowed by brand_members, never
+ * "all"). Tests wanting unrestricted access pass `brandIds: "all"` explicitly.
+ */
 export function memberCtx(overrides: Partial<MemberCtx> = {}): MemberCtx {
   return {
     orgId: "org_1",
     memberId: "member_1",
     role: "creator",
-    brandIds: "all",
+    brandIds: ["brand_1"],
     ...overrides,
   };
 }

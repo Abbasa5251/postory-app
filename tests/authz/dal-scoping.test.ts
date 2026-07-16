@@ -67,7 +67,10 @@ describe("brands DAL — org scoping is structurally present", () => {
   it("getBrandById: cross-org / nonexistent are the same 404-shaped NotFoundError", async () => {
     makeSelectChain(select, []); // org-scoped query finds nothing — other tenant or absent
     await expect(
-      getBrandById(memberCtx({ role: "admin", brandIds: "all" }), "b_other_org"),
+      getBrandById(
+        memberCtx({ role: "admin", brandIds: "all" }),
+        "b_other_org",
+      ),
     ).rejects.toThrow(NotFoundError);
   });
 
@@ -86,8 +89,9 @@ describe("orgScope table constraint", () => {
   it("rejects tables lacking org_id at the type level", async () => {
     const { orgScope } = await import("@/server/dal/scope");
     const { user } = await import("@/db/schemas/auth");
+    const ctx = memberCtx({ role: "admin", brandIds: "all" });
     // @ts-expect-error — user has no orgId column; this failing to compile IS the assertion.
-    const build = () => orgScope(memberCtx({ role: "admin" }), user);
+    const build = () => orgScope(ctx, user);
     expect(build).toBeDefined();
   });
 });
