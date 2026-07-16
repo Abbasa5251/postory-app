@@ -44,3 +44,29 @@ export const authAuditEventSchema = z.object({
 });
 
 export type AuthAuditEvent = z.input<typeof authAuditEventSchema>;
+
+/**
+ * Org-scoped mutation audit events (AGENTS.md §6.6) — the input to
+ * `recordAuditEvent(ctx, …)`. Deliberately carries NO orgId/actor fields:
+ * tenancy and attribution derive exclusively from the AuthCtx inside the
+ * DAL, so a caller cannot spoof them even by accident.
+ */
+export const orgAuditEventSchema = z.object({
+  // Dot-namespaced, e.g. 'brand.create', 'post.approve'. Open pattern, not
+  // an enum: the action set grows with every feature PR; promote to a
+  // central registry at rule-of-two if drift appears.
+  action: z
+    .string()
+    .max(128)
+    .regex(/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/),
+  entityType: z.string().min(1).max(64),
+  entityId: z.string().min(1).max(128),
+  ipAddress: truncated(64),
+  userAgent: truncated(512),
+  // Programmer-authored context (unlike auth metadata above, which is
+  // attacker-controlled), so JSON-shape enforcement only. NEVER secrets or
+  // payload PII (AGENTS.md §7) — review-enforced.
+  metadata: z.record(z.string(), z.json()).optional(),
+});
+
+export type OrgAuditEvent = z.input<typeof orgAuditEventSchema>;
