@@ -33,7 +33,7 @@ describe("shouldEnforceProductionEnv", () => {
   });
 
   it.each(["0", "false"])(
-    "stays off during a production build when VERCEL=%s (only exactly \"1\" counts)",
+    'stays off during a production build when VERCEL=%s (only exactly "1" counts)',
     (value) => {
       vi.stubEnv("NODE_ENV", "production");
       vi.stubEnv("NEXT_PHASE", PHASE_PRODUCTION_BUILD);

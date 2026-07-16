@@ -1,61 +1,21 @@
-import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
-import { PgDialect } from "drizzle-orm/pg-core";
-import type { SQL } from "drizzle-orm";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getBrandById, listBrands } from "@/server/dal/brands";
-import type { AuthCtx, MemberCtx } from "@/server/dal/types";
 import { NotFoundError } from "@/server/domain/errors";
+import { memberCtx } from "../helpers/ctx";
+import { makeSelectChain, renderedWhere } from "../helpers/db-mock";
 
 /**
- * Structural seed of the A8 authz matrix (mock-level): every exported DAL
- * query must render an org_id predicate bound to ctx.orgId — proof that no
- * method ships unscoped. Query BEHAVIOR against real SQL (live two-org
- * isolation) is A8's job, on a seeded Neon branch.
+ * A8 mock-level tenancy proof: every exported DAL query renders an org_id
+ * predicate bound to ctx.orgId, so no method can ship unscoped (ADR-002).
+ * Query BEHAVIOUR against a real two-org dataset is the deferred live layer
+ * (see the it.todo block below). Adding a DAL method? Add its case here —
+ * tests/authz/README.md is the checklist.
  */
 
-// The db client is mocked, not imported (AGENTS.md §6 boundary; see
-// audit-dal.test.ts for the rationale).
+// The db client is mocked, not imported (AGENTS.md §6 boundary; the hoisted
+// spy must live in this file — vitest hoists vi.mock per-module).
 const { select } = vi.hoisted(() => ({ select: vi.fn() }));
 vi.mock("@/db/db", () => ({ db: { select } }));
-
-const dialect = new PgDialect();
-
-type Chain = {
-  from: Mock;
-  where: Mock;
-  orderBy: Mock;
-  limit: Mock;
-};
-
-/** Chainable select mock resolving to `rows`; captures the where() argument. */
-function mockSelect(rows: unknown[]): Chain {
-  const chain: Chain = {
-    from: vi.fn(),
-    where: vi.fn(),
-    orderBy: vi.fn(),
-    limit: vi.fn(),
-  };
-  chain.from.mockReturnValue(chain);
-  chain.where.mockReturnValue(chain);
-  chain.orderBy.mockResolvedValue(rows);
-  chain.limit.mockResolvedValue(rows);
-  select.mockReturnValue(chain);
-  return chain;
-}
-
-function renderedWhere(chain: Chain) {
-  expect(chain.where).toHaveBeenCalledOnce();
-  return dialect.sqlToQuery(chain.where.mock.calls[0]![0] as SQL);
-}
-
-const ctx = (
-  brandIds: MemberCtx["brandIds"],
-  role: MemberCtx["role"] = "creator",
-): AuthCtx => ({
-  orgId: "org_1",
-  memberId: "member_1",
-  role,
-  brandIds,
-});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -63,8 +23,8 @@ beforeEach(() => {
 
 describe("brands DAL — org scoping is structurally present", () => {
   it("listBrands (full access) filters on org_id = ctx.orgId", async () => {
-    const chain = mockSelect([]);
-    await listBrands(ctx("all", "admin"));
+    const chain = makeSelectChain(select, []);
+    await listBrands(memberCtx({ role: "admin", brandIds: "all" }));
 
     const query = renderedWhere(chain);
     expect(query.sql).toContain('"brands"."org_id" = $1');
@@ -72,8 +32,8 @@ describe("brands DAL — org scoping is structurally present", () => {
   });
 
   it("listBrands (creator) adds the assigned-brand narrowing on top of org scoping", async () => {
-    const chain = mockSelect([]);
-    await listBrands(ctx(["b1", "b2"]));
+    const chain = makeSelectChain(select, []);
+    await listBrands(memberCtx({ role: "creator", brandIds: ["b1", "b2"] }));
 
     const query = renderedWhere(chain);
     expect(query.sql).toContain('"brands"."org_id" = $1');
@@ -82,8 +42,8 @@ describe("brands DAL — org scoping is structurally present", () => {
   });
 
   it("listBrands (creator with zero brands) renders false — matches nothing, never everything", async () => {
-    const chain = mockSelect([]);
-    await listBrands(ctx([]));
+    const chain = makeSelectChain(select, []);
+    await listBrands(memberCtx({ role: "creator", brandIds: [] }));
 
     const query = renderedWhere(chain);
     expect(query.sql).toContain("false");
@@ -91,8 +51,11 @@ describe("brands DAL — org scoping is structurally present", () => {
   });
 
   it("getBrandById scopes by org AND id", async () => {
-    const chain = mockSelect([{ id: "b1", orgId: "org_1" }]);
-    const row = await getBrandById(ctx("all", "approver"), "b1");
+    const chain = makeSelectChain(select, [{ id: "b1", orgId: "org_1" }]);
+    const row = await getBrandById(
+      memberCtx({ role: "approver", brandIds: "all" }),
+      "b1",
+    );
 
     const query = renderedWhere(chain);
     expect(query.sql).toContain('"brands"."org_id" = $1');
@@ -102,17 +65,20 @@ describe("brands DAL — org scoping is structurally present", () => {
   });
 
   it("getBrandById: cross-org / nonexistent are the same 404-shaped NotFoundError", async () => {
-    mockSelect([]); // org-scoped query finds nothing — other tenant or absent
+    makeSelectChain(select, []); // org-scoped query finds nothing — other tenant or absent
     await expect(
-      getBrandById(ctx("all", "admin"), "b_other_org"),
+      getBrandById(
+        memberCtx({ role: "admin", brandIds: "all" }),
+        "b_other_org",
+      ),
     ).rejects.toThrow(NotFoundError);
   });
 
   it("getBrandById: creator with an unassigned brand is rejected BEFORE any query runs", async () => {
-    mockSelect([{ id: "b9" }]);
-    await expect(getBrandById(ctx(["b1"]), "b9")).rejects.toThrow(
-      NotFoundError,
-    );
+    makeSelectChain(select, [{ id: "b9" }]);
+    await expect(
+      getBrandById(memberCtx({ role: "creator", brandIds: ["b1"] }), "b9"),
+    ).rejects.toThrow(NotFoundError);
     expect(select).not.toHaveBeenCalled();
   });
 });
@@ -123,8 +89,20 @@ describe("orgScope table constraint", () => {
   it("rejects tables lacking org_id at the type level", async () => {
     const { orgScope } = await import("@/server/dal/scope");
     const { user } = await import("@/db/schemas/auth");
+    const ctx = memberCtx({ role: "admin", brandIds: "all" });
     // @ts-expect-error — user has no orgId column; this failing to compile IS the assertion.
-    const build = () => orgScope(ctx("all", "admin"), user);
+    const build = () => orgScope(ctx, user);
     expect(build).toBeDefined();
   });
+});
+
+// ── Live two-org isolation (deferred) ──────────────────────────────────────
+// Defense-in-depth on top of the mock-level proof above: exercise the DAL
+// against a seeded Neon branch with two real orgs and assert one can never
+// read the other's rows. Needs test-DB infra + GitHub secrets (a documented
+// carry-over, pairs with the Playwright nightly — PRD §Epic-A carry-overs).
+describe("live two-org isolation (seeded Neon branch — deferred)", () => {
+  it.todo("org A's listBrands returns none of org B's brands");
+  it.todo("org A's getBrandById on an org-B brand id throws NotFoundError");
+  it.todo("a creator cannot read a brand outside its brand_members rows");
 });
