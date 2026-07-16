@@ -2,6 +2,7 @@ import { defineRelationsPart, sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -27,9 +28,7 @@ export const portalTokens = pgTable(
   {
     id: uuidV7Pk(),
     orgId: orgId(),
-    brandId: uuid("brand_id")
-      .notNull()
-      .references(() => brands.id, { onDelete: "cascade" }),
+    brandId: uuid("brand_id").notNull(),
     tokenHash: text("token_hash").notNull(),
     capability: text("capability").notNull(),
     // Opaque — post-id set ('approve') or brand+month ('report'), shaped by E4/G4.
@@ -46,6 +45,13 @@ export const portalTokens = pgTable(
       "portal_tokens_capability_check",
       sql`${t.capability} IN ('approve', 'report')`,
     ),
+    // Composite FK: the token's brand must belong to the token's org (§6
+    // belt-and-suspenders — org_id here can never point across tenants).
+    foreignKey({
+      name: "portal_tokens_org_brand_fkey",
+      columns: [t.orgId, t.brandId],
+      foreignColumns: [brands.orgId, brands.id],
+    }).onDelete("cascade"),
     uniqueIndex("portal_tokens_hash_uidx").on(t.tokenHash),
     index("portal_tokens_org_brand_idx").on(t.orgId, t.brandId),
   ],
@@ -54,21 +60,18 @@ export const portalTokens = pgTable(
 /**
  * approvals (PRD §4/§5) — immutable decision records (no updated_at).
  * Each decision binds to the post_version it was made against (§5).
- * Exactly one decider in practice (member for 'internal', token for
- * 'client'); the CHECK allows <= 1 so SET NULL on member/token removal
- * preserves history — flagged in PR notes.
+ * Decider type is stage-bound (member decides 'internal', token decides
+ * 'client' — enforced by approvals_decider_stage_check); both may be NULL
+ * so SET NULL on member/token removal preserves history — flagged in PR
+ * notes.
  */
 export const approvals = pgTable(
   "approvals",
   {
     id: uuidV7Pk(),
     orgId: orgId(),
-    postId: uuid("post_id")
-      .notNull()
-      .references(() => posts.id, { onDelete: "cascade" }),
-    postVersionId: uuid("post_version_id")
-      .notNull()
-      .references(() => postVersions.id, { onDelete: "cascade" }),
+    postId: uuid("post_id").notNull(),
+    postVersionId: uuid("post_version_id").notNull(),
     stage: text("stage").notNull(),
     round: integer("round").notNull().default(1),
     decision: text("decision").notNull(),
@@ -93,6 +96,24 @@ export const approvals = pgTable(
       "approvals_decided_by_check",
       sql`num_nonnulls(${t.decidedByMemberId}, ${t.decidedByTokenId}) <= 1`,
     ),
+    // Decider type follows the stage: only members decide 'internal', only
+    // portal tokens decide 'client' (§5/§7). NULLs stay legal (SET NULL).
+    check(
+      "approvals_decider_stage_check",
+      sql`(${t.stage} <> 'internal' OR ${t.decidedByTokenId} IS NULL) AND (${t.stage} <> 'client' OR ${t.decidedByMemberId} IS NULL)`,
+    ),
+    // Composite FKs: the post must live in this org, and the decided-against
+    // version must belong to this post (§6 belt-and-suspenders).
+    foreignKey({
+      name: "approvals_org_post_fkey",
+      columns: [t.orgId, t.postId],
+      foreignColumns: [posts.orgId, posts.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "approvals_post_version_fkey",
+      columns: [t.postId, t.postVersionId],
+      foreignColumns: [postVersions.postId, postVersions.id],
+    }).onDelete("cascade"),
     index("approvals_org_post_idx").on(t.orgId, t.postId),
     index("approvals_post_stage_round_idx").on(t.postId, t.stage, t.round),
   ],
@@ -106,9 +127,7 @@ export const comments = pgTable(
   {
     id: uuidV7Pk(),
     orgId: orgId(),
-    postId: uuid("post_id")
-      .notNull()
-      .references(() => posts.id, { onDelete: "cascade" }),
+    postId: uuid("post_id").notNull(),
     // Opaque — where the comment anchors (platform tab, media, …), shaped by E3.
     anchor: jsonb("anchor"),
     body: text("body").notNull(),
@@ -124,6 +143,12 @@ export const comments = pgTable(
       "comments_author_check",
       sql`num_nonnulls(${t.authorMemberId}, ${t.authorTokenId}) <= 1`,
     ),
+    // Composite FK: the commented post must live in this org (§6).
+    foreignKey({
+      name: "comments_org_post_fkey",
+      columns: [t.orgId, t.postId],
+      foreignColumns: [posts.orgId, posts.id],
+    }).onDelete("cascade"),
     index("comments_org_post_idx").on(t.orgId, t.postId),
     index("comments_post_created_idx").on(t.postId, t.createdAt),
   ],

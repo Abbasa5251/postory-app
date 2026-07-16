@@ -24,7 +24,8 @@ CREATE TABLE "approvals" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "approvals_stage_check" CHECK ("stage" IN ('internal', 'client')),
 	CONSTRAINT "approvals_decision_check" CHECK ("decision" IN ('approved', 'changes_requested')),
-	CONSTRAINT "approvals_decided_by_check" CHECK (num_nonnulls("decided_by_member_id", "decided_by_token_id") <= 1)
+	CONSTRAINT "approvals_decided_by_check" CHECK (num_nonnulls("decided_by_member_id", "decided_by_token_id") <= 1),
+	CONSTRAINT "approvals_decider_stage_check" CHECK (("stage" <> 'internal' OR "decided_by_token_id" IS NULL) AND ("stage" <> 'client' OR "decided_by_member_id" IS NULL))
 );
 --> statement-breakpoint
 CREATE TABLE "comments" (
@@ -114,7 +115,8 @@ CREATE TABLE "brands" (
 	"requires_client_approval" boolean DEFAULT false NOT NULL,
 	"client_contact_email" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "brands_org_id_id_key" UNIQUE("org_id","id")
 );
 --> statement-breakpoint
 CREATE TABLE "social_accounts" (
@@ -130,6 +132,8 @@ CREATE TABLE "social_accounts" (
 	"connected_by" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "social_accounts_org_id_id_key" UNIQUE("org_id","id"),
+	CONSTRAINT "social_accounts_brand_id_id_key" UNIQUE("brand_id","id"),
 	CONSTRAINT "social_accounts_platform_check" CHECK ("platform" IN ('instagram', 'facebook', 'tiktok', 'linkedin', 'threads', 'youtube')),
 	CONSTRAINT "social_accounts_status_check" CHECK ("status" IN ('connected', 'needs_reauth', 'disconnected'))
 );
@@ -141,7 +145,8 @@ CREATE TABLE "zernio_profiles" (
 	"zernio_profile_id" text NOT NULL,
 	"profile_no" integer DEFAULT 1 NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "zernio_profiles_brand_id_id_key" UNIQUE("brand_id","id")
 );
 --> statement-breakpoint
 CREATE TABLE "generation_jobs" (
@@ -204,6 +209,7 @@ CREATE TABLE "org_settings" (
 CREATE TABLE "post_platforms" (
 	"id" uuid PRIMARY KEY DEFAULT uuidv7(),
 	"org_id" text NOT NULL,
+	"brand_id" uuid NOT NULL,
 	"post_id" uuid NOT NULL,
 	"social_account_id" uuid NOT NULL,
 	"overrides" jsonb,
@@ -212,6 +218,7 @@ CREATE TABLE "post_platforms" (
 	"published_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "post_platforms_org_id_id_key" UNIQUE("org_id","id"),
 	CONSTRAINT "post_platforms_publish_status_check" CHECK ("publish_status" IN ('pending', 'publishing', 'published', 'failed'))
 );
 --> statement-breakpoint
@@ -223,7 +230,8 @@ CREATE TABLE "post_versions" (
 	"content" jsonb NOT NULL,
 	"media_ids" uuid[] DEFAULT '{}'::uuid[] NOT NULL,
 	"created_by" text,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "post_versions_post_id_id_key" UNIQUE("post_id","id")
 );
 --> statement-breakpoint
 CREATE TABLE "posts" (
@@ -241,6 +249,8 @@ CREATE TABLE "posts" (
 	"labels" text[] DEFAULT '{}'::text[] NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "posts_org_id_id_key" UNIQUE("org_id","id"),
+	CONSTRAINT "posts_brand_id_id_key" UNIQUE("brand_id","id"),
 	CONSTRAINT "posts_status_check" CHECK ("status" IN ('DRAFT', 'IN_REVIEW', 'CHANGES_REQUESTED', 'CLIENT_REVIEW', 'APPROVED', 'SCHEDULED', 'PUBLISHING', 'PUBLISHED', 'FAILED', 'ARCHIVED'))
 );
 --> statement-breakpoint
@@ -298,47 +308,48 @@ CREATE UNIQUE INDEX "webhook_events_provider_event_uidx" ON "webhook_events" ("p
 CREATE INDEX "webhook_events_unprocessed_idx" ON "webhook_events" ("created_at") WHERE "processed_at" IS NULL;--> statement-breakpoint
 CREATE INDEX "webhook_events_org_idx" ON "webhook_events" ("org_id");--> statement-breakpoint
 ALTER TABLE "analytics_snapshots" ADD CONSTRAINT "analytics_snapshots_org_id_organization_id_fkey" FOREIGN KEY ("org_id") REFERENCES "organization"("id") ON DELETE CASCADE;--> statement-breakpoint
-ALTER TABLE "analytics_snapshots" ADD CONSTRAINT "analytics_snapshots_post_platform_id_post_platforms_id_fkey" FOREIGN KEY ("post_platform_id") REFERENCES "post_platforms"("id") ON DELETE CASCADE;--> statement-breakpoint
+ALTER TABLE "analytics_snapshots" ADD CONSTRAINT "analytics_snapshots_org_platform_fkey" FOREIGN KEY ("org_id","post_platform_id") REFERENCES "post_platforms"("org_id","id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "approvals" ADD CONSTRAINT "approvals_org_id_organization_id_fkey" FOREIGN KEY ("org_id") REFERENCES "organization"("id") ON DELETE CASCADE;--> statement-breakpoint
-ALTER TABLE "approvals" ADD CONSTRAINT "approvals_post_id_posts_id_fkey" FOREIGN KEY ("post_id") REFERENCES "posts"("id") ON DELETE CASCADE;--> statement-breakpoint
-ALTER TABLE "approvals" ADD CONSTRAINT "approvals_post_version_id_post_versions_id_fkey" FOREIGN KEY ("post_version_id") REFERENCES "post_versions"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "approvals" ADD CONSTRAINT "approvals_decided_by_member_id_member_id_fkey" FOREIGN KEY ("decided_by_member_id") REFERENCES "member"("id") ON DELETE SET NULL;--> statement-breakpoint
 ALTER TABLE "approvals" ADD CONSTRAINT "approvals_decided_by_token_id_portal_tokens_id_fkey" FOREIGN KEY ("decided_by_token_id") REFERENCES "portal_tokens"("id") ON DELETE SET NULL;--> statement-breakpoint
+ALTER TABLE "approvals" ADD CONSTRAINT "approvals_org_post_fkey" FOREIGN KEY ("org_id","post_id") REFERENCES "posts"("org_id","id") ON DELETE CASCADE;--> statement-breakpoint
+ALTER TABLE "approvals" ADD CONSTRAINT "approvals_post_version_fkey" FOREIGN KEY ("post_id","post_version_id") REFERENCES "post_versions"("post_id","id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "comments" ADD CONSTRAINT "comments_org_id_organization_id_fkey" FOREIGN KEY ("org_id") REFERENCES "organization"("id") ON DELETE CASCADE;--> statement-breakpoint
-ALTER TABLE "comments" ADD CONSTRAINT "comments_post_id_posts_id_fkey" FOREIGN KEY ("post_id") REFERENCES "posts"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "comments" ADD CONSTRAINT "comments_author_member_id_member_id_fkey" FOREIGN KEY ("author_member_id") REFERENCES "member"("id") ON DELETE SET NULL;--> statement-breakpoint
 ALTER TABLE "comments" ADD CONSTRAINT "comments_author_token_id_portal_tokens_id_fkey" FOREIGN KEY ("author_token_id") REFERENCES "portal_tokens"("id") ON DELETE SET NULL;--> statement-breakpoint
+ALTER TABLE "comments" ADD CONSTRAINT "comments_org_post_fkey" FOREIGN KEY ("org_id","post_id") REFERENCES "posts"("org_id","id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "portal_tokens" ADD CONSTRAINT "portal_tokens_org_id_organization_id_fkey" FOREIGN KEY ("org_id") REFERENCES "organization"("id") ON DELETE CASCADE;--> statement-breakpoint
-ALTER TABLE "portal_tokens" ADD CONSTRAINT "portal_tokens_brand_id_brands_id_fkey" FOREIGN KEY ("brand_id") REFERENCES "brands"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "portal_tokens" ADD CONSTRAINT "portal_tokens_created_by_member_id_fkey" FOREIGN KEY ("created_by") REFERENCES "member"("id") ON DELETE SET NULL;--> statement-breakpoint
+ALTER TABLE "portal_tokens" ADD CONSTRAINT "portal_tokens_org_brand_fkey" FOREIGN KEY ("org_id","brand_id") REFERENCES "brands"("org_id","id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "credit_ledger" ADD CONSTRAINT "credit_ledger_org_id_organization_id_fkey" FOREIGN KEY ("org_id") REFERENCES "organization"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "subscriptions" ADD CONSTRAINT "subscriptions_org_id_organization_id_fkey" FOREIGN KEY ("org_id") REFERENCES "organization"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "brand_members" ADD CONSTRAINT "brand_members_org_id_organization_id_fkey" FOREIGN KEY ("org_id") REFERENCES "organization"("id") ON DELETE CASCADE;--> statement-breakpoint
-ALTER TABLE "brand_members" ADD CONSTRAINT "brand_members_brand_id_brands_id_fkey" FOREIGN KEY ("brand_id") REFERENCES "brands"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "brand_members" ADD CONSTRAINT "brand_members_member_id_member_id_fkey" FOREIGN KEY ("member_id") REFERENCES "member"("id") ON DELETE CASCADE;--> statement-breakpoint
+ALTER TABLE "brand_members" ADD CONSTRAINT "brand_members_org_brand_fkey" FOREIGN KEY ("org_id","brand_id") REFERENCES "brands"("org_id","id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "brands" ADD CONSTRAINT "brands_org_id_organization_id_fkey" FOREIGN KEY ("org_id") REFERENCES "organization"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "social_accounts" ADD CONSTRAINT "social_accounts_org_id_organization_id_fkey" FOREIGN KEY ("org_id") REFERENCES "organization"("id") ON DELETE CASCADE;--> statement-breakpoint
-ALTER TABLE "social_accounts" ADD CONSTRAINT "social_accounts_brand_id_brands_id_fkey" FOREIGN KEY ("brand_id") REFERENCES "brands"("id") ON DELETE CASCADE;--> statement-breakpoint
-ALTER TABLE "social_accounts" ADD CONSTRAINT "social_accounts_zernio_profile_id_zernio_profiles_id_fkey" FOREIGN KEY ("zernio_profile_id") REFERENCES "zernio_profiles"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "social_accounts" ADD CONSTRAINT "social_accounts_connected_by_member_id_fkey" FOREIGN KEY ("connected_by") REFERENCES "member"("id") ON DELETE SET NULL;--> statement-breakpoint
+ALTER TABLE "social_accounts" ADD CONSTRAINT "social_accounts_org_brand_fkey" FOREIGN KEY ("org_id","brand_id") REFERENCES "brands"("org_id","id") ON DELETE CASCADE;--> statement-breakpoint
+ALTER TABLE "social_accounts" ADD CONSTRAINT "social_accounts_brand_profile_fkey" FOREIGN KEY ("brand_id","zernio_profile_id") REFERENCES "zernio_profiles"("brand_id","id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "zernio_profiles" ADD CONSTRAINT "zernio_profiles_org_id_organization_id_fkey" FOREIGN KEY ("org_id") REFERENCES "organization"("id") ON DELETE CASCADE;--> statement-breakpoint
-ALTER TABLE "zernio_profiles" ADD CONSTRAINT "zernio_profiles_brand_id_brands_id_fkey" FOREIGN KEY ("brand_id") REFERENCES "brands"("id") ON DELETE CASCADE;--> statement-breakpoint
+ALTER TABLE "zernio_profiles" ADD CONSTRAINT "zernio_profiles_org_brand_fkey" FOREIGN KEY ("org_id","brand_id") REFERENCES "brands"("org_id","id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "generation_jobs" ADD CONSTRAINT "generation_jobs_org_id_organization_id_fkey" FOREIGN KEY ("org_id") REFERENCES "organization"("id") ON DELETE CASCADE;--> statement-breakpoint
-ALTER TABLE "generation_jobs" ADD CONSTRAINT "generation_jobs_brand_id_brands_id_fkey" FOREIGN KEY ("brand_id") REFERENCES "brands"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "generation_jobs" ADD CONSTRAINT "generation_jobs_created_by_member_id_fkey" FOREIGN KEY ("created_by") REFERENCES "member"("id") ON DELETE SET NULL;--> statement-breakpoint
+ALTER TABLE "generation_jobs" ADD CONSTRAINT "generation_jobs_org_brand_fkey" FOREIGN KEY ("org_id","brand_id") REFERENCES "brands"("org_id","id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "media_assets" ADD CONSTRAINT "media_assets_org_id_organization_id_fkey" FOREIGN KEY ("org_id") REFERENCES "organization"("id") ON DELETE CASCADE;--> statement-breakpoint
-ALTER TABLE "media_assets" ADD CONSTRAINT "media_assets_brand_id_brands_id_fkey" FOREIGN KEY ("brand_id") REFERENCES "brands"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "media_assets" ADD CONSTRAINT "media_assets_generation_job_id_generation_jobs_id_fkey" FOREIGN KEY ("generation_job_id") REFERENCES "generation_jobs"("id") ON DELETE SET NULL;--> statement-breakpoint
+ALTER TABLE "media_assets" ADD CONSTRAINT "media_assets_org_brand_fkey" FOREIGN KEY ("org_id","brand_id") REFERENCES "brands"("org_id","id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "org_settings" ADD CONSTRAINT "org_settings_org_id_organization_id_fkey" FOREIGN KEY ("org_id") REFERENCES "organization"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "post_platforms" ADD CONSTRAINT "post_platforms_org_id_organization_id_fkey" FOREIGN KEY ("org_id") REFERENCES "organization"("id") ON DELETE CASCADE;--> statement-breakpoint
-ALTER TABLE "post_platforms" ADD CONSTRAINT "post_platforms_post_id_posts_id_fkey" FOREIGN KEY ("post_id") REFERENCES "posts"("id") ON DELETE CASCADE;--> statement-breakpoint
-ALTER TABLE "post_platforms" ADD CONSTRAINT "post_platforms_social_account_id_social_accounts_id_fkey" FOREIGN KEY ("social_account_id") REFERENCES "social_accounts"("id") ON DELETE CASCADE;--> statement-breakpoint
+ALTER TABLE "post_platforms" ADD CONSTRAINT "post_platforms_org_brand_fkey" FOREIGN KEY ("org_id","brand_id") REFERENCES "brands"("org_id","id") ON DELETE CASCADE;--> statement-breakpoint
+ALTER TABLE "post_platforms" ADD CONSTRAINT "post_platforms_brand_post_fkey" FOREIGN KEY ("brand_id","post_id") REFERENCES "posts"("brand_id","id") ON DELETE CASCADE;--> statement-breakpoint
+ALTER TABLE "post_platforms" ADD CONSTRAINT "post_platforms_brand_account_fkey" FOREIGN KEY ("brand_id","social_account_id") REFERENCES "social_accounts"("brand_id","id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "post_versions" ADD CONSTRAINT "post_versions_org_id_organization_id_fkey" FOREIGN KEY ("org_id") REFERENCES "organization"("id") ON DELETE CASCADE;--> statement-breakpoint
-ALTER TABLE "post_versions" ADD CONSTRAINT "post_versions_post_id_posts_id_fkey" FOREIGN KEY ("post_id") REFERENCES "posts"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "post_versions" ADD CONSTRAINT "post_versions_created_by_member_id_fkey" FOREIGN KEY ("created_by") REFERENCES "member"("id") ON DELETE SET NULL;--> statement-breakpoint
+ALTER TABLE "post_versions" ADD CONSTRAINT "post_versions_org_post_fkey" FOREIGN KEY ("org_id","post_id") REFERENCES "posts"("org_id","id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "posts" ADD CONSTRAINT "posts_org_id_organization_id_fkey" FOREIGN KEY ("org_id") REFERENCES "organization"("id") ON DELETE CASCADE;--> statement-breakpoint
-ALTER TABLE "posts" ADD CONSTRAINT "posts_brand_id_brands_id_fkey" FOREIGN KEY ("brand_id") REFERENCES "brands"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "posts" ADD CONSTRAINT "posts_current_version_id_post_versions_id_fkey" FOREIGN KEY ("current_version_id") REFERENCES "post_versions"("id") ON DELETE SET NULL;--> statement-breakpoint
 ALTER TABLE "posts" ADD CONSTRAINT "posts_created_by_member_id_fkey" FOREIGN KEY ("created_by") REFERENCES "member"("id") ON DELETE SET NULL;--> statement-breakpoint
 ALTER TABLE "posts" ADD CONSTRAINT "posts_internal_approved_by_member_id_fkey" FOREIGN KEY ("internal_approved_by") REFERENCES "member"("id") ON DELETE SET NULL;--> statement-breakpoint
+ALTER TABLE "posts" ADD CONSTRAINT "posts_org_brand_fkey" FOREIGN KEY ("org_id","brand_id") REFERENCES "brands"("org_id","id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "webhook_events" ADD CONSTRAINT "webhook_events_org_id_organization_id_fkey" FOREIGN KEY ("org_id") REFERENCES "organization"("id") ON DELETE SET NULL;

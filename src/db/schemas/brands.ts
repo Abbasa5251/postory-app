@@ -2,11 +2,13 @@ import { defineRelationsPart, sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  foreignKey,
   index,
   integer,
   jsonb,
   pgTable,
   text,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -40,6 +42,10 @@ export const brands = pgTable(
     ...timestamps(),
   },
   (t) => [
+    // Composite FK target: children reference (org_id, id) so their
+    // denormalized org_id provably matches the brand's org (§6
+    // belt-and-suspenders — a wrong org_id can't slip past a brand FK).
+    unique("brands_org_id_id_key").on(t.orgId, t.id),
     uniqueIndex("brands_org_slug_uidx").on(t.orgId, t.slug),
     index("brands_org_created_idx").on(t.orgId, t.createdAt),
   ],
@@ -57,9 +63,7 @@ export const zernioProfiles = pgTable(
   {
     id: uuidV7Pk(),
     orgId: orgId(),
-    brandId: uuid("brand_id")
-      .notNull()
-      .references(() => brands.id, { onDelete: "cascade" }),
+    brandId: uuid("brand_id").notNull(),
     // External Zernio id — one Zernio workspace key for all of POSTORY,
     // so this is globally unique, not per-org.
     zernioProfileId: text("zernio_profile_id").notNull(),
@@ -67,6 +71,14 @@ export const zernioProfiles = pgTable(
     ...timestamps(),
   },
   (t) => [
+    // Composite FK target for social_accounts' same-brand proof.
+    unique("zernio_profiles_brand_id_id_key").on(t.brandId, t.id),
+    // Composite FK: the profile's brand must belong to the profile's org (§6).
+    foreignKey({
+      name: "zernio_profiles_org_brand_fkey",
+      columns: [t.orgId, t.brandId],
+      foreignColumns: [brands.orgId, brands.id],
+    }).onDelete("cascade"),
     uniqueIndex("zernio_profiles_brand_no_uidx").on(t.brandId, t.profileNo),
     uniqueIndex("zernio_profiles_external_uidx").on(t.zernioProfileId),
     index("zernio_profiles_org_brand_idx").on(t.orgId, t.brandId),
@@ -83,12 +95,8 @@ export const socialAccounts = pgTable(
   {
     id: uuidV7Pk(),
     orgId: orgId(),
-    brandId: uuid("brand_id")
-      .notNull()
-      .references(() => brands.id, { onDelete: "cascade" }),
-    zernioProfileId: uuid("zernio_profile_id")
-      .notNull()
-      .references(() => zernioProfiles.id, { onDelete: "cascade" }),
+    brandId: uuid("brand_id").notNull(),
+    zernioProfileId: uuid("zernio_profile_id").notNull(),
     platform: text("platform").notNull(),
     zernioAccountId: text("zernio_account_id").notNull(),
     handle: text("handle").notNull(),
@@ -108,6 +116,21 @@ export const socialAccounts = pgTable(
       "social_accounts_status_check",
       sql`${t.status} IN ('connected', 'needs_reauth', 'disconnected')`,
     ),
+    // Composite FK targets for post_platforms' same-org/same-brand proofs.
+    unique("social_accounts_org_id_id_key").on(t.orgId, t.id),
+    unique("social_accounts_brand_id_id_key").on(t.brandId, t.id),
+    // Composite FKs: the account's brand must belong to its org, and its
+    // Zernio profile must belong to that same brand (§6).
+    foreignKey({
+      name: "social_accounts_org_brand_fkey",
+      columns: [t.orgId, t.brandId],
+      foreignColumns: [brands.orgId, brands.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "social_accounts_brand_profile_fkey",
+      columns: [t.brandId, t.zernioProfileId],
+      foreignColumns: [zernioProfiles.brandId, zernioProfiles.id],
+    }).onDelete("cascade"),
     // ADR-009: one account per platform per profile (pending R1 verification).
     uniqueIndex("social_accounts_profile_platform_uidx").on(
       t.zernioProfileId,
@@ -127,17 +150,23 @@ export const brandMembers = pgTable(
   {
     id: uuidV7Pk(),
     orgId: orgId(),
-    brandId: uuid("brand_id")
-      .notNull()
-      .references(() => brands.id, { onDelete: "cascade" }),
+    brandId: uuid("brand_id").notNull(),
     // Pure join row — dies with the membership (cascade, unlike the
-    // attribution FKs elsewhere which SET NULL).
+    // attribution FKs elsewhere which SET NULL). member_id ↔ org consistency
+    // stays DAL-enforced: a composite FK would need a unique key on the
+    // better-auth-owned member table (§6) — flagged in PR notes.
     memberId: text("member_id")
       .notNull()
       .references(() => member.id, { onDelete: "cascade" }),
     createdAt: createdAt(),
   },
   (t) => [
+    // Composite FK: the assigned brand must belong to this org (§6).
+    foreignKey({
+      name: "brand_members_org_brand_fkey",
+      columns: [t.orgId, t.brandId],
+      foreignColumns: [brands.orgId, brands.id],
+    }).onDelete("cascade"),
     uniqueIndex("brand_members_brand_member_uidx").on(t.brandId, t.memberId),
     index("brand_members_org_member_idx").on(t.orgId, t.memberId),
   ],

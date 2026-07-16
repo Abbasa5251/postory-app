@@ -1,12 +1,14 @@
 import { defineRelationsPart, sql } from "drizzle-orm";
 import {
   check,
+  foreignKey,
   index,
   integer,
   jsonb,
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
   type AnyPgColumn,
@@ -35,14 +37,14 @@ export const posts = pgTable(
   {
     id: uuidV7Pk(),
     orgId: orgId(),
-    brandId: uuid("brand_id")
-      .notNull()
-      .references(() => brands.id, { onDelete: "cascade" }),
+    brandId: uuid("brand_id").notNull(),
     status: text("status").notNull().default("DRAFT"),
     // Circular FK with post_versions — the AnyPgColumn-annotated thunk breaks
     // the type-inference cycle; drizzle-kit emits FKs as trailing ALTERs, so
     // both constraints land cleanly in one migration. Nullable: the post row
-    // exists before its first version.
+    // exists before its first version. Single-column FK by necessity: a
+    // same-post composite tie would need ON DELETE SET NULL on post id too —
+    // flagged in PR notes.
     currentVersionId: uuid("current_version_id").references(
       (): AnyPgColumn => postVersions.id,
       { onDelete: "set null" },
@@ -67,6 +69,15 @@ export const posts = pgTable(
       "posts_status_check",
       sql`${t.status} IN ('DRAFT', 'IN_REVIEW', 'CHANGES_REQUESTED', 'CLIENT_REVIEW', 'APPROVED', 'SCHEDULED', 'PUBLISHING', 'PUBLISHED', 'FAILED', 'ARCHIVED')`,
     ),
+    // Composite FK targets for the post-hierarchy ownership proofs (§6).
+    unique("posts_org_id_id_key").on(t.orgId, t.id),
+    unique("posts_brand_id_id_key").on(t.brandId, t.id),
+    // Composite FK: the post's brand must belong to the post's org (§6).
+    foreignKey({
+      name: "posts_org_brand_fkey",
+      columns: [t.orgId, t.brandId],
+      foreignColumns: [brands.orgId, brands.id],
+    }).onDelete("cascade"),
     // Nullable-unique: PG treats NULLs as distinct, so unscheduled posts coexist.
     uniqueIndex("posts_zernio_post_uidx").on(t.zernioPostId),
     index("posts_org_brand_created_idx").on(t.orgId, t.brandId, t.createdAt),
@@ -85,9 +96,7 @@ export const postVersions = pgTable(
   {
     id: uuidV7Pk(),
     orgId: orgId(),
-    postId: uuid("post_id")
-      .notNull()
-      .references(() => posts.id, { onDelete: "cascade" }),
+    postId: uuid("post_id").notNull(),
     versionNo: integer("version_no").notNull(),
     // Opaque — per-platform content snapshot, shaped by Epic C.
     content: jsonb("content").notNull(),
@@ -101,6 +110,14 @@ export const postVersions = pgTable(
     createdAt: createdAt(),
   },
   (t) => [
+    // Composite FK target: approvals prove their version belongs to their post.
+    unique("post_versions_post_id_id_key").on(t.postId, t.id),
+    // Composite FK: the version's post must live in this org (§6).
+    foreignKey({
+      name: "post_versions_org_post_fkey",
+      columns: [t.orgId, t.postId],
+      foreignColumns: [posts.orgId, posts.id],
+    }).onDelete("cascade"),
     uniqueIndex("post_versions_post_no_uidx").on(t.postId, t.versionNo),
     index("post_versions_org_created_idx").on(t.orgId, t.createdAt),
   ],
@@ -117,12 +134,11 @@ export const postPlatforms = pgTable(
   {
     id: uuidV7Pk(),
     orgId: orgId(),
-    postId: uuid("post_id")
-      .notNull()
-      .references(() => posts.id, { onDelete: "cascade" }),
-    socialAccountId: uuid("social_account_id")
-      .notNull()
-      .references(() => socialAccounts.id, { onDelete: "cascade" }),
+    // Denormalized from posts/social_accounts so the composite FKs below can
+    // prove the post and account share one brand (PR review; §6).
+    brandId: uuid("brand_id").notNull(),
+    postId: uuid("post_id").notNull(),
+    socialAccountId: uuid("social_account_id").notNull(),
     // Opaque — first comment, reel/short type, etc. (C1/C5).
     overrides: jsonb("overrides"),
     publishStatus: text("publish_status").notNull().default("pending"),
@@ -135,6 +151,26 @@ export const postPlatforms = pgTable(
       "post_platforms_publish_status_check",
       sql`${t.publishStatus} IN ('pending', 'publishing', 'published', 'failed')`,
     ),
+    // Composite FK target for analytics_snapshots' same-org proof.
+    unique("post_platforms_org_id_id_key").on(t.orgId, t.id),
+    // Composite FKs: brand belongs to this org, and both the post and the
+    // connected account belong to that same brand — a target row can never
+    // pair a post with another brand's or tenant's account (§6).
+    foreignKey({
+      name: "post_platforms_org_brand_fkey",
+      columns: [t.orgId, t.brandId],
+      foreignColumns: [brands.orgId, brands.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "post_platforms_brand_post_fkey",
+      columns: [t.brandId, t.postId],
+      foreignColumns: [posts.brandId, posts.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "post_platforms_brand_account_fkey",
+      columns: [t.brandId, t.socialAccountId],
+      foreignColumns: [socialAccounts.brandId, socialAccounts.id],
+    }).onDelete("cascade"),
     uniqueIndex("post_platforms_post_account_uidx").on(
       t.postId,
       t.socialAccountId,

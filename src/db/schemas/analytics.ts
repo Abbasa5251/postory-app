@@ -1,6 +1,7 @@
 import { defineRelationsPart, sql } from "drizzle-orm";
 import {
   check,
+  foreignKey,
   index,
   jsonb,
   pgTable,
@@ -24,9 +25,7 @@ export const analyticsSnapshots = pgTable(
   {
     id: uuidV7Pk(),
     orgId: orgId(),
-    postPlatformId: uuid("post_platform_id")
-      .notNull()
-      .references(() => postPlatforms.id, { onDelete: "cascade" }),
+    postPlatformId: uuid("post_platform_id").notNull(),
     captureWindow: text("capture_window").notNull(),
     capturedAt: timestamp("captured_at", { withTimezone: true })
       .defaultNow()
@@ -41,6 +40,12 @@ export const analyticsSnapshots = pgTable(
       "analytics_snapshots_capture_window_check",
       sql`${t.captureWindow} IN ('24h', '72h', '7d', '30d')`,
     ),
+    // Composite FK: the snapshot's post_platform must live in this org (§6).
+    foreignKey({
+      name: "analytics_snapshots_org_platform_fkey",
+      columns: [t.orgId, t.postPlatformId],
+      foreignColumns: [postPlatforms.orgId, postPlatforms.id],
+    }).onDelete("cascade"),
     uniqueIndex("analytics_snapshots_platform_window_uidx").on(
       t.postPlatformId,
       t.captureWindow,

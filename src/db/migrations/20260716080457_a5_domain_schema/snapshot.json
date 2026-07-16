@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "61602772-b94e-4633-b253-072a4f5e86e0",
+  "id": "ccb4f530-0925-4e0d-ab7c-461f3c579ddf",
   "prevIds": [
     "92bc5b6e-dc39-4e25-9d4d-fd1ba1d6eb4a"
   ],
@@ -2913,6 +2913,19 @@
       "default": null,
       "generated": null,
       "identity": null,
+      "name": "brand_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "post_platforms"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
       "name": "post_id",
       "entityType": "columns",
       "schema": "public",
@@ -4747,18 +4760,20 @@
       "table": "analytics_snapshots"
     },
     {
-      "nameExplicit": false,
+      "nameExplicit": true,
       "columns": [
+        "org_id",
         "post_platform_id"
       ],
       "schemaTo": "public",
       "tableTo": "post_platforms",
       "columnsTo": [
+        "org_id",
         "id"
       ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
-      "name": "analytics_snapshots_post_platform_id_post_platforms_id_fkey",
+      "name": "analytics_snapshots_org_platform_fkey",
       "entityType": "fks",
       "schema": "public",
       "table": "analytics_snapshots"
@@ -4776,40 +4791,6 @@
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "name": "approvals_org_id_organization_id_fkey",
-      "entityType": "fks",
-      "schema": "public",
-      "table": "approvals"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
-        "post_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "posts",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "name": "approvals_post_id_posts_id_fkey",
-      "entityType": "fks",
-      "schema": "public",
-      "table": "approvals"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
-        "post_version_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "post_versions",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "name": "approvals_post_version_id_post_versions_id_fkey",
       "entityType": "fks",
       "schema": "public",
       "table": "approvals"
@@ -4849,6 +4830,44 @@
       "table": "approvals"
     },
     {
+      "nameExplicit": true,
+      "columns": [
+        "org_id",
+        "post_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "posts",
+      "columnsTo": [
+        "org_id",
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "approvals_org_post_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "approvals"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        "post_id",
+        "post_version_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "post_versions",
+      "columnsTo": [
+        "post_id",
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "approvals_post_version_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "approvals"
+    },
+    {
       "nameExplicit": false,
       "columns": [
         "org_id"
@@ -4861,23 +4880,6 @@
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "name": "comments_org_id_organization_id_fkey",
-      "entityType": "fks",
-      "schema": "public",
-      "table": "comments"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
-        "post_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "posts",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "name": "comments_post_id_posts_id_fkey",
       "entityType": "fks",
       "schema": "public",
       "table": "comments"
@@ -4917,6 +4919,25 @@
       "table": "comments"
     },
     {
+      "nameExplicit": true,
+      "columns": [
+        "org_id",
+        "post_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "posts",
+      "columnsTo": [
+        "org_id",
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "comments_org_post_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "comments"
+    },
+    {
       "nameExplicit": false,
       "columns": [
         "org_id"
@@ -4936,23 +4957,6 @@
     {
       "nameExplicit": false,
       "columns": [
-        "brand_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "brands",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "name": "portal_tokens_brand_id_brands_id_fkey",
-      "entityType": "fks",
-      "schema": "public",
-      "table": "portal_tokens"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
         "created_by"
       ],
       "schemaTo": "public",
@@ -4963,6 +4967,25 @@
       "onUpdate": "NO ACTION",
       "onDelete": "SET NULL",
       "name": "portal_tokens_created_by_member_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "portal_tokens"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        "org_id",
+        "brand_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "brands",
+      "columnsTo": [
+        "org_id",
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "portal_tokens_org_brand_fkey",
       "entityType": "fks",
       "schema": "public",
       "table": "portal_tokens"
@@ -5140,23 +5163,6 @@
     {
       "nameExplicit": false,
       "columns": [
-        "brand_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "brands",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "name": "brand_members_brand_id_brands_id_fkey",
-      "entityType": "fks",
-      "schema": "public",
-      "table": "brand_members"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
         "member_id"
       ],
       "schemaTo": "public",
@@ -5167,6 +5173,25 @@
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "name": "brand_members_member_id_member_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "brand_members"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        "org_id",
+        "brand_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "brands",
+      "columnsTo": [
+        "org_id",
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "brand_members_org_brand_fkey",
       "entityType": "fks",
       "schema": "public",
       "table": "brand_members"
@@ -5208,40 +5233,6 @@
     {
       "nameExplicit": false,
       "columns": [
-        "brand_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "brands",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "name": "social_accounts_brand_id_brands_id_fkey",
-      "entityType": "fks",
-      "schema": "public",
-      "table": "social_accounts"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
-        "zernio_profile_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "zernio_profiles",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "name": "social_accounts_zernio_profile_id_zernio_profiles_id_fkey",
-      "entityType": "fks",
-      "schema": "public",
-      "table": "social_accounts"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
         "connected_by"
       ],
       "schemaTo": "public",
@@ -5252,6 +5243,44 @@
       "onUpdate": "NO ACTION",
       "onDelete": "SET NULL",
       "name": "social_accounts_connected_by_member_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "social_accounts"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        "org_id",
+        "brand_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "brands",
+      "columnsTo": [
+        "org_id",
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "social_accounts_org_brand_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "social_accounts"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        "brand_id",
+        "zernio_profile_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "zernio_profiles",
+      "columnsTo": [
+        "brand_id",
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "social_accounts_brand_profile_fkey",
       "entityType": "fks",
       "schema": "public",
       "table": "social_accounts"
@@ -5274,18 +5303,20 @@
       "table": "zernio_profiles"
     },
     {
-      "nameExplicit": false,
+      "nameExplicit": true,
       "columns": [
+        "org_id",
         "brand_id"
       ],
       "schemaTo": "public",
       "tableTo": "brands",
       "columnsTo": [
+        "org_id",
         "id"
       ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
-      "name": "zernio_profiles_brand_id_brands_id_fkey",
+      "name": "zernio_profiles_org_brand_fkey",
       "entityType": "fks",
       "schema": "public",
       "table": "zernio_profiles"
@@ -5310,23 +5341,6 @@
     {
       "nameExplicit": false,
       "columns": [
-        "brand_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "brands",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "name": "generation_jobs_brand_id_brands_id_fkey",
-      "entityType": "fks",
-      "schema": "public",
-      "table": "generation_jobs"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
         "created_by"
       ],
       "schemaTo": "public",
@@ -5337,6 +5351,25 @@
       "onUpdate": "NO ACTION",
       "onDelete": "SET NULL",
       "name": "generation_jobs_created_by_member_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "generation_jobs"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        "org_id",
+        "brand_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "brands",
+      "columnsTo": [
+        "org_id",
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "generation_jobs_org_brand_fkey",
       "entityType": "fks",
       "schema": "public",
       "table": "generation_jobs"
@@ -5361,23 +5394,6 @@
     {
       "nameExplicit": false,
       "columns": [
-        "brand_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "brands",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "name": "media_assets_brand_id_brands_id_fkey",
-      "entityType": "fks",
-      "schema": "public",
-      "table": "media_assets"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
         "generation_job_id"
       ],
       "schemaTo": "public",
@@ -5388,6 +5404,25 @@
       "onUpdate": "NO ACTION",
       "onDelete": "SET NULL",
       "name": "media_assets_generation_job_id_generation_jobs_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "media_assets"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        "org_id",
+        "brand_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "brands",
+      "columnsTo": [
+        "org_id",
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "media_assets_org_brand_fkey",
       "entityType": "fks",
       "schema": "public",
       "table": "media_assets"
@@ -5427,35 +5462,58 @@
       "table": "post_platforms"
     },
     {
-      "nameExplicit": false,
+      "nameExplicit": true,
       "columns": [
-        "post_id"
+        "org_id",
+        "brand_id"
       ],
       "schemaTo": "public",
-      "tableTo": "posts",
+      "tableTo": "brands",
       "columnsTo": [
+        "org_id",
         "id"
       ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
-      "name": "post_platforms_post_id_posts_id_fkey",
+      "name": "post_platforms_org_brand_fkey",
       "entityType": "fks",
       "schema": "public",
       "table": "post_platforms"
     },
     {
-      "nameExplicit": false,
+      "nameExplicit": true,
       "columns": [
+        "brand_id",
+        "post_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "posts",
+      "columnsTo": [
+        "brand_id",
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "post_platforms_brand_post_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "post_platforms"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        "brand_id",
         "social_account_id"
       ],
       "schemaTo": "public",
       "tableTo": "social_accounts",
       "columnsTo": [
+        "brand_id",
         "id"
       ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
-      "name": "post_platforms_social_account_id_social_accounts_id_fkey",
+      "name": "post_platforms_brand_account_fkey",
       "entityType": "fks",
       "schema": "public",
       "table": "post_platforms"
@@ -5480,23 +5538,6 @@
     {
       "nameExplicit": false,
       "columns": [
-        "post_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "posts",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "name": "post_versions_post_id_posts_id_fkey",
-      "entityType": "fks",
-      "schema": "public",
-      "table": "post_versions"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
         "created_by"
       ],
       "schemaTo": "public",
@@ -5507,6 +5548,25 @@
       "onUpdate": "NO ACTION",
       "onDelete": "SET NULL",
       "name": "post_versions_created_by_member_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "post_versions"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        "org_id",
+        "post_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "posts",
+      "columnsTo": [
+        "org_id",
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "post_versions_org_post_fkey",
       "entityType": "fks",
       "schema": "public",
       "table": "post_versions"
@@ -5524,23 +5584,6 @@
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "name": "posts_org_id_organization_id_fkey",
-      "entityType": "fks",
-      "schema": "public",
-      "table": "posts"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
-        "brand_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "brands",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "name": "posts_brand_id_brands_id_fkey",
       "entityType": "fks",
       "schema": "public",
       "table": "posts"
@@ -5592,6 +5635,25 @@
       "onUpdate": "NO ACTION",
       "onDelete": "SET NULL",
       "name": "posts_internal_approved_by_member_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "posts"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        "org_id",
+        "brand_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "brands",
+      "columnsTo": [
+        "org_id",
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "posts_org_brand_fkey",
       "entityType": "fks",
       "schema": "public",
       "table": "posts"
@@ -5874,6 +5936,102 @@
       "entityType": "pks"
     },
     {
+      "nameExplicit": true,
+      "columns": [
+        "org_id",
+        "id"
+      ],
+      "nullsNotDistinct": false,
+      "name": "brands_org_id_id_key",
+      "entityType": "uniques",
+      "schema": "public",
+      "table": "brands"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        "org_id",
+        "id"
+      ],
+      "nullsNotDistinct": false,
+      "name": "social_accounts_org_id_id_key",
+      "entityType": "uniques",
+      "schema": "public",
+      "table": "social_accounts"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        "brand_id",
+        "id"
+      ],
+      "nullsNotDistinct": false,
+      "name": "social_accounts_brand_id_id_key",
+      "entityType": "uniques",
+      "schema": "public",
+      "table": "social_accounts"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        "brand_id",
+        "id"
+      ],
+      "nullsNotDistinct": false,
+      "name": "zernio_profiles_brand_id_id_key",
+      "entityType": "uniques",
+      "schema": "public",
+      "table": "zernio_profiles"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        "org_id",
+        "id"
+      ],
+      "nullsNotDistinct": false,
+      "name": "post_platforms_org_id_id_key",
+      "entityType": "uniques",
+      "schema": "public",
+      "table": "post_platforms"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        "post_id",
+        "id"
+      ],
+      "nullsNotDistinct": false,
+      "name": "post_versions_post_id_id_key",
+      "entityType": "uniques",
+      "schema": "public",
+      "table": "post_versions"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        "org_id",
+        "id"
+      ],
+      "nullsNotDistinct": false,
+      "name": "posts_org_id_id_key",
+      "entityType": "uniques",
+      "schema": "public",
+      "table": "posts"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        "brand_id",
+        "id"
+      ],
+      "nullsNotDistinct": false,
+      "name": "posts_brand_id_id_key",
+      "entityType": "uniques",
+      "schema": "public",
+      "table": "posts"
+    },
+    {
       "nameExplicit": false,
       "columns": [
         "slug"
@@ -5930,6 +6088,13 @@
     {
       "value": "num_nonnulls(\"decided_by_member_id\", \"decided_by_token_id\") <= 1",
       "name": "approvals_decided_by_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "approvals"
+    },
+    {
+      "value": "(\"stage\" <> 'internal' OR \"decided_by_token_id\" IS NULL) AND (\"stage\" <> 'client' OR \"decided_by_member_id\" IS NULL)",
+      "name": "approvals_decider_stage_check",
       "entityType": "checks",
       "schema": "public",
       "table": "approvals"

@@ -17,8 +17,10 @@ import { createdAt, orgId, timestamps, uuidV7Pk } from "./_helpers";
  * row; corrections are compensating entries. Balance = SUM(delta) per org
  * (materialized, invalidated on write — Epic H). Reserve (debit) happens
  * BEFORE the OpenRouter call; settle/refund after. Append-only is enforced
- * by the DAL contract (AGENTS.md §16) — the schema deliberately has no
- * updated_at to update.
+ * at the PG layer by triggers rejecting UPDATE/DELETE (see the
+ * credit_ledger_append_only migration — triggers can't be expressed in
+ * drizzle schema) on top of the DAL contract (AGENTS.md §16); the schema
+ * deliberately has no updated_at to update.
  */
 export const creditLedger = pgTable(
   "credit_ledger",

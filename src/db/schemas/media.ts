@@ -2,6 +2,7 @@ import { defineRelationsPart, sql } from "drizzle-orm";
 import {
   bigint,
   check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -26,9 +27,7 @@ export const generationJobs = pgTable(
   {
     id: uuidV7Pk(),
     orgId: orgId(),
-    brandId: uuid("brand_id")
-      .notNull()
-      .references(() => brands.id, { onDelete: "cascade" }),
+    brandId: uuid("brand_id").notNull(),
     // 'video' reserved for post-launch (D4/D7) — pipeline is model-agnostic.
     type: text("type").notNull(),
     // OpenRouter model id — priced via the credit_rates config table (ADR-012).
@@ -55,6 +54,12 @@ export const generationJobs = pgTable(
       "generation_jobs_status_check",
       sql`${t.status} IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')`,
     ),
+    // Composite FK: the job's brand must belong to the job's org (§6).
+    foreignKey({
+      name: "generation_jobs_org_brand_fkey",
+      columns: [t.orgId, t.brandId],
+      foreignColumns: [brands.orgId, brands.id],
+    }).onDelete("cascade"),
     index("generation_jobs_org_brand_created_idx").on(
       t.orgId,
       t.brandId,
@@ -74,9 +79,7 @@ export const mediaAssets = pgTable(
   {
     id: uuidV7Pk(),
     orgId: orgId(),
-    brandId: uuid("brand_id")
-      .notNull()
-      .references(() => brands.id, { onDelete: "cascade" }),
+    brandId: uuid("brand_id").notNull(),
     kind: text("kind").notNull(),
     source: text("source").notNull(),
     // ADR-007 key layout: org/{orgId}/brand/{brandId}/…
@@ -87,7 +90,9 @@ export const mediaAssets = pgTable(
     height: integer("height"),
     durationSeconds: integer("duration_seconds"),
     sourceModel: text("source_model"),
-    // SET NULL: assets outlive job-row pruning.
+    // SET NULL: assets outlive job-row pruning. Single-column FK by
+    // necessity: a same-brand composite tie would SET NULL the NOT NULL
+    // brand_id on job pruning — flagged in PR notes.
     generationJobId: uuid("generation_job_id").references(
       () => generationJobs.id,
       { onDelete: "set null" },
@@ -106,6 +111,12 @@ export const mediaAssets = pgTable(
       "media_assets_moderation_status_check",
       sql`${t.moderationStatus} IN ('pending', 'passed', 'blocked')`,
     ),
+    // Composite FK: the asset's brand must belong to the asset's org (§6).
+    foreignKey({
+      name: "media_assets_org_brand_fkey",
+      columns: [t.orgId, t.brandId],
+      foreignColumns: [brands.orgId, brands.id],
+    }).onDelete("cascade"),
     uniqueIndex("media_assets_r2_key_uidx").on(t.r2Key),
     index("media_assets_org_brand_created_idx").on(
       t.orgId,
