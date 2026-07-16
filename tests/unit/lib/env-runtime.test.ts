@@ -32,6 +32,16 @@ describe("shouldEnforceProductionEnv", () => {
     expect(shouldEnforceProductionEnv()).toBe(true);
   });
 
+  it.each(["0", "false"])(
+    "stays off during a production build when VERCEL=%s (only exactly \"1\" counts)",
+    (value) => {
+      vi.stubEnv("NODE_ENV", "production");
+      vi.stubEnv("NEXT_PHASE", PHASE_PRODUCTION_BUILD);
+      vi.stubEnv("VERCEL", value);
+      expect(shouldEnforceProductionEnv()).toBe(false);
+    },
+  );
+
   it("is on at production runtime (no build phase)", () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("NEXT_PHASE", "");

@@ -16,5 +16,5 @@
 export function shouldEnforceProductionEnv(): boolean {
   if (process.env.NODE_ENV !== "production") return false;
   const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
-  return !isBuildPhase || Boolean(process.env.VERCEL);
+  return !isBuildPhase || process.env.VERCEL === "1";
 }
