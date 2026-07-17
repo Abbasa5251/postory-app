@@ -14,7 +14,7 @@ type Level = "debug" | "info" | "warn" | "error";
 type Fields = Record<string, unknown>;
 
 function emit(level: Level, message: string, fields?: Fields): void {
-  const record = { level, time: new Date().toISOString(), message, ...fields };
+  const record = { ...fields, level, time: new Date().toISOString(), message };
   process.stdout.write(`${JSON.stringify(record)}\n`);
 }
 
