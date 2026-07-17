@@ -50,10 +50,13 @@ _Avoid_: hashtag sets, tags, keywords.
 ### Publishing plumbing
 
 **Zernio Profile**:
-Invisible internal plumbing: a container in Zernio that holds connected Social
-Accounts. Brand ↔ profile is 1:N (ADR-009). Provisioned **lazily** — a profile
-is created on first account placement, not at brand creation. Users never see
-profiles.
+Invisible internal plumbing: a container in Zernio that groups a Brand's
+connected Social Accounts — Zernio calls it "the tenant boundary", which is
+exactly what a Brand is for us, so Brand ↔ profile is **1:1** (ADR-009, amended
+after R1 resolved: Zernio profiles hold any number of accounts including
+multiple of the same platform, so no overflow profiles). Provisioned **lazily** —
+the single profile is created on first account placement, not at brand creation.
+Users never see profiles.
 _Avoid_: Channel, group, workspace.
 
 **Social Account**:
