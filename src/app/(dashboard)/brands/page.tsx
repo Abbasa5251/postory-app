@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { NewBrandDialog } from "@/components/features/brands/new-brand-dialog";
 import {
   Card,
@@ -37,12 +38,17 @@ export default async function BrandsPage() {
         <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {brands.map((brand) => (
             <li key={brand.id}>
-              <Card>
-                <CardHeader>
-                  <CardTitle>{brand.name}</CardTitle>
-                  <CardDescription>{brand.timezone}</CardDescription>
-                </CardHeader>
-              </Card>
+              <Link
+                href={`/brands/${brand.id}/settings`}
+                className="block rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <Card className="transition-colors hover:border-ring">
+                  <CardHeader>
+                    <CardTitle>{brand.name}</CardTitle>
+                    <CardDescription>{brand.timezone}</CardDescription>
+                  </CardHeader>
+                </Card>
+              </Link>
             </li>
           ))}
         </ul>
