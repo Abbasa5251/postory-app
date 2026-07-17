@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getBrandById, listBrands } from "@/server/dal/brands";
+import { createBrand, getBrandById, listBrands } from "@/server/dal/brands";
 import { NotFoundError } from "@/server/domain/errors";
 import { memberCtx } from "../helpers/ctx";
-import { makeSelectChain, renderedWhere } from "../helpers/db-mock";
+import {
+  captureInserts,
+  makeSelectChain,
+  renderedWhere,
+} from "../helpers/db-mock";
 
 /**
  * A8 mock-level tenancy proof: every exported DAL query renders an org_id
@@ -14,8 +18,11 @@ import { makeSelectChain, renderedWhere } from "../helpers/db-mock";
 
 // The db client is mocked, not imported (AGENTS.md §6 boundary; the hoisted
 // spy must live in this file — vitest hoists vi.mock per-module).
-const { select } = vi.hoisted(() => ({ select: vi.fn() }));
-vi.mock("@/db/db", () => ({ db: { select } }));
+const { select, insert } = vi.hoisted(() => ({
+  select: vi.fn(),
+  insert: vi.fn(),
+}));
+vi.mock("@/db/db", () => ({ db: { select, insert } }));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -80,6 +87,48 @@ describe("brands DAL — org scoping is structurally present", () => {
       getBrandById(memberCtx({ role: "creator", brandIds: ["b1"] }), "b9"),
     ).rejects.toThrow(NotFoundError);
     expect(select).not.toHaveBeenCalled();
+  });
+});
+
+describe("createBrand — writes are org-scoped and audited", () => {
+  it("writes org_id from ctx (never input), the deduped slug, and pairs a brand.create audit", async () => {
+    // An existing "acme-co" forces the slug dedupe path.
+    const selectChain = makeSelectChain(select, [{ slug: "acme-co" }]);
+    const inserts = captureInserts(insert, [{ id: "brand_new" }]);
+
+    const row = await createBrand(
+      memberCtx({ role: "admin", brandIds: "all" }),
+      { name: "Acme Co", timezone: "UTC" },
+    );
+
+    // The slug-lookup select is org-scoped (belt AND suspenders, §6.4).
+    const query = renderedWhere(selectChain);
+    expect(query.sql).toContain('"brands"."org_id" = $1');
+    expect(query.params).toEqual(["org_1"]);
+
+    // Insert 1 — the brand row. org_id comes from ctx, slug is deduped.
+    const brandInsert = inserts[0]!.values as Record<string, unknown>;
+    expect(brandInsert.orgId).toBe("org_1");
+    expect(brandInsert.name).toBe("Acme Co");
+    expect(brandInsert.slug).toBe("acme-co-2");
+    expect(brandInsert.timezone).toBe("UTC");
+
+    // Insert 2 — the audit row (§6.6), attributed to the member from ctx.
+    const auditInsert = inserts[1]!.values as Record<string, unknown>;
+    expect(auditInsert.orgId).toBe("org_1");
+    expect(auditInsert.actorType).toBe("member");
+    expect(auditInsert.actorId).toBe("member_1");
+    expect(auditInsert.action).toBe("brand.create");
+    expect(auditInsert.entityType).toBe("brand");
+    expect(auditInsert.entityId).toBe("brand_new");
+    // §6.6 diff: the created fields, from input + computed slug.
+    expect(auditInsert.metadata).toEqual({
+      name: "Acme Co",
+      slug: "acme-co-2",
+      timezone: "UTC",
+    });
+
+    expect(row).toEqual({ id: "brand_new" });
   });
 });
 
