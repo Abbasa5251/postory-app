@@ -1,14 +1,20 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { OnboardingCard } from "@/components/features/onboarding/onboarding-card";
+import { recoverActiveOrg } from "@/server/auth/active-org";
 import { auth } from "@/server/auth/auth";
 
-// Org is required — no personal mode (PRD A3). Signed-in users without an
-// active organization land here; everyone else is bounced to the right place.
+// Org is required — no personal mode (PRD A3). Onboarding is ONLY for users who
+// belong to no organization: a member who merely lost their active org is
+// recovered and sent to the dashboard, not asked to create another org.
 export default async function OnboardingPage() {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const requestHeaders = await headers();
+  const session = await auth.api.getSession({ headers: requestHeaders });
   if (!session) redirect("/auth/sign-in");
   if (session.session.activeOrganizationId) redirect("/dashboard");
+  if ((await recoverActiveOrg(requestHeaders)) === "recovered") {
+    redirect("/dashboard");
+  }
 
   return <OnboardingCard userName={session.user.name} />;
 }
