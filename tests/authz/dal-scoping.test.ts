@@ -4,6 +4,8 @@ import {
   getBrandById,
   listBrands,
   updateBrand,
+  updateBrandContact,
+  updateBrandVoice,
 } from "@/server/dal/brands";
 import { NotFoundError } from "@/server/domain/errors";
 import { memberCtx } from "../helpers/ctx";
@@ -203,6 +205,119 @@ describe("updateBrand — org+id-scoped, audited, slug untouched", () => {
         timezone: "UTC",
       }),
     ).rejects.toThrow(NotFoundError);
+    expect(update).not.toHaveBeenCalled();
+  });
+});
+
+describe("updateBrandVoice — sets only voice_profile, distinct audit", () => {
+  it("scopes by org+id, writes only voiceProfile, audits brand.voice.update with fields (not values)", async () => {
+    const upd = captureUpdate(update, [{ id: "b1" }]);
+    const inserts = captureInserts(insert, [{ id: "audit_1" }]);
+    makeBatch(batch);
+
+    await updateBrandVoice(
+      memberCtx({ role: "admin", brandIds: "all" }),
+      "b1",
+      {
+        tone: "warm",
+        hashtags: ["Sale"],
+      },
+    );
+
+    const where = renderedSql(upd.where!);
+    expect(where.sql).toContain('"brands"."org_id" = $1');
+    expect(where.sql).toContain('"brands"."id" = $2');
+    expect(where.params).toEqual(["org_1", "b1"]);
+
+    const set = upd.set as Record<string, unknown>;
+    expect(Object.keys(set)).toEqual(["voiceProfile"]); // never name/timezone/contact
+    expect(set.voiceProfile).toEqual({ tone: "warm", hashtags: ["Sale"] });
+
+    const audit = inserts[0]!.values as Record<string, unknown>;
+    expect(audit.action).toBe("brand.voice.update");
+    expect(audit.entityId).toBe("b1");
+    expect(audit.metadata).toEqual({ fields: ["tone", "hashtags"] });
+  });
+
+  it("records empty fields when the profile is cleared to null", async () => {
+    captureUpdate(update, [{ id: "b1" }]);
+    const inserts = captureInserts(insert, [{ id: "audit_1" }]);
+    makeBatch(batch);
+
+    await updateBrandVoice(
+      memberCtx({ role: "admin", brandIds: "all" }),
+      "b1",
+      null,
+    );
+
+    const audit = inserts[0]!.values as Record<string, unknown>;
+    expect(audit.metadata).toEqual({ fields: [] });
+  });
+});
+
+describe("updateBrandContact — sets only client_contact_email, PII-safe audit", () => {
+  it("writes only clientContactEmail and audits set/cleared WITHOUT the address", async () => {
+    const upd = captureUpdate(update, [{ id: "b1" }]);
+    const inserts = captureInserts(insert, [{ id: "audit_1" }]);
+    makeBatch(batch);
+
+    await updateBrandContact(
+      memberCtx({ role: "admin", brandIds: "all" }),
+      "b1",
+      "client@example.com",
+    );
+
+    const set = upd.set as Record<string, unknown>;
+    expect(Object.keys(set)).toEqual(["clientContactEmail"]);
+    expect(set.clientContactEmail).toBe("client@example.com");
+
+    const audit = inserts[0]!.values as Record<string, unknown>;
+    expect(audit.action).toBe("brand.contact.update");
+    expect(audit.metadata).toEqual({ clientContactEmail: "set" });
+    // The email value must never reach the audit log (§7 PII).
+    expect(JSON.stringify(audit.metadata)).not.toContain("client@example.com");
+  });
+
+  it("audits 'cleared' when the email is set to null", async () => {
+    captureUpdate(update, [{ id: "b1" }]);
+    const inserts = captureInserts(insert, [{ id: "audit_1" }]);
+    makeBatch(batch);
+
+    await updateBrandContact(
+      memberCtx({ role: "admin", brandIds: "all" }),
+      "b1",
+      null,
+    );
+
+    const audit = inserts[0]!.values as Record<string, unknown>;
+    expect(audit.metadata).toEqual({ clientContactEmail: "cleared" });
+  });
+
+  it("cross-org 0-row update throws NotFoundError", async () => {
+    captureUpdate(update, []); // no row in caller's org
+    captureInserts(insert, []);
+    makeBatch(batch);
+    await expect(
+      updateBrandContact(
+        memberCtx({ role: "admin", brandIds: "all" }),
+        "b_other",
+        "x@y.com",
+      ),
+    ).rejects.toThrow(NotFoundError);
+  });
+
+  it("rejects a creator's unassigned brand before any update (voice + contact)", async () => {
+    captureUpdate(update, [{ id: "b9" }]);
+    makeBatch(batch);
+    const creator = memberCtx({ role: "creator", brandIds: ["b1"] });
+
+    await expect(
+      updateBrandVoice(creator, "b9", { tone: "x" }),
+    ).rejects.toThrow(NotFoundError);
+    await expect(updateBrandContact(creator, "b9", "x@y.com")).rejects.toThrow(
+      NotFoundError,
+    );
+
     expect(update).not.toHaveBeenCalled();
   });
 });

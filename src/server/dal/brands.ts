@@ -2,7 +2,8 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db/db";
 import { brands } from "@/db/schemas/brands";
-import type { CreateBrandInput } from "@/lib/validation/brands";
+import type { OrgAuditEvent } from "@/lib/validation/audit";
+import type { CreateBrandInput, VoiceProfile } from "@/lib/validation/brands";
 import { dedupeSlug, slugify } from "@/server/domain/brand-slug";
 import { NotFoundError } from "@/server/domain/errors";
 import { buildAuditInsert, recordAuditEvent } from "./audit";
@@ -94,36 +95,104 @@ export async function createBrand(ctx: AuthCtx, input: CreateBrandInput) {
   return row;
 }
 
+/** The columns a brand update may set. `slug` is absent — it's immutable. */
+type BrandUpdateFields = Partial<{
+  name: string;
+  timezone: string;
+  voiceProfile: VoiceProfile | null;
+  clientContactEmail: string | null;
+}>;
+
 /**
- * Update a brand's editable fields (B1.2). Role gated upstream by
- * authorize("brand:update"); the action does the §7 step-4 scoped fetch
- * (getBrandById) before calling this, so cross-org/nonexistent ids 404 before
- * any write. `slug` is intentionally never updated — it's immutable (routing
- * is by id, B1 grill).
+ * Shared atomic brand-update mechanism (B1.2/B2) — the §13 hotspot every brand
+ * mutation funnels through. Role is gated upstream by authorize("brand:update")
+ * and the action does the §7 step-4 scoped fetch (getBrandById), so
+ * cross-org/nonexistent ids 404 before any write; the org+id scope here is
+ * belt-and-suspenders (§6.4). Case A (dal/audit.ts): the id is known up-front,
+ * so the update and its audit run as one atomic db.batch.
  */
+async function applyBrandUpdate(
+  ctx: AuthCtx,
+  brandId: string,
+  set: BrandUpdateFields,
+  audit: { action: string; metadata?: OrgAuditEvent["metadata"] },
+) {
+  assertBrandAccess(ctx, brandId);
+  const [updated] = await db.batch([
+    db
+      .update(brands)
+      .set(set)
+      .where(and(orgScope(ctx, brands), eq(brands.id, brandId)))
+      .returning({ id: brands.id }),
+    buildAuditInsert(ctx, {
+      action: audit.action,
+      entityType: "brand",
+      entityId: brandId,
+      metadata: audit.metadata,
+    }),
+  ]);
+  // 0 rows: a genuine race (deleted between the scoped fetch and here) — the
+  // accepted Case-A residual leaves a no-op audit row.
+  if (updated.length === 0) throw new NotFoundError("brand", brandId);
+  return updated[0];
+}
+
+/** Update a brand's name + timezone (B1.2). */
 export async function updateBrand(
   ctx: AuthCtx,
   brandId: string,
   input: CreateBrandInput,
 ) {
-  assertBrandAccess(ctx, brandId);
-  // Case A (dal/audit.ts): the id is known up-front, so the update and its
-  // audit run as one atomic db.batch — an audit failure rolls back the update.
-  const [updated] = await db.batch([
-    db
-      .update(brands)
-      .set({ name: input.name, timezone: input.timezone })
-      .where(and(orgScope(ctx, brands), eq(brands.id, brandId)))
-      .returning({ id: brands.id }),
-    buildAuditInsert(ctx, {
+  return applyBrandUpdate(
+    ctx,
+    brandId,
+    { name: input.name, timezone: input.timezone },
+    {
       action: "brand.update",
-      entityType: "brand",
-      entityId: brandId,
       metadata: { name: input.name, timezone: input.timezone },
-    }),
-  ]);
-  // 0 rows: a genuine race (deleted between the action's scoped fetch and here)
-  // — the accepted Case-A residual leaves a no-op audit row.
-  if (updated.length === 0) throw new NotFoundError("brand", brandId);
-  return updated[0];
+    },
+  );
+}
+
+/**
+ * Set a brand's voice profile (B2). Stored as-is (already normalized + validated
+ * by the schema) or null when empty. Audit records only which fields were set —
+ * not the bulky values (§6.6).
+ */
+export async function updateBrandVoice(
+  ctx: AuthCtx,
+  brandId: string,
+  voiceProfile: VoiceProfile | null,
+) {
+  const fields = voiceProfile
+    ? Object.entries(voiceProfile)
+        .filter(([, v]) => (Array.isArray(v) ? v.length > 0 : Boolean(v)))
+        .map(([k]) => k)
+    : [];
+  return applyBrandUpdate(
+    ctx,
+    brandId,
+    { voiceProfile },
+    { action: "brand.voice.update", metadata: { fields } },
+  );
+}
+
+/**
+ * Set or clear a brand's client contact email (B2). Audit records only whether
+ * it was set or cleared — never the address, which is third-party PII (§7).
+ */
+export async function updateBrandContact(
+  ctx: AuthCtx,
+  brandId: string,
+  clientContactEmail: string | null,
+) {
+  return applyBrandUpdate(
+    ctx,
+    brandId,
+    { clientContactEmail },
+    {
+      action: "brand.contact.update",
+      metadata: { clientContactEmail: clientContactEmail ? "set" : "cleared" },
+    },
+  );
 }

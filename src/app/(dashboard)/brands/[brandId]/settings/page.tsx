@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { BrandContactForm } from "@/components/features/brands/brand-contact-form";
+import { BrandVoiceForm } from "@/components/features/brands/brand-voice-form";
 import { EditBrandForm } from "@/components/features/brands/edit-brand-form";
+import { Separator } from "@/components/ui/separator";
+import { type VoiceProfile, voiceProfileSchema } from "@/lib/validation/brands";
 import { getAuthCtx } from "@/server/auth/context";
 import { getBrandById } from "@/server/dal/brands";
 import { NotFoundError } from "@/server/domain/errors";
@@ -24,11 +28,16 @@ export default async function BrandSettingsPage({
   }
 
   // Editing is owner/admin only; other roles that can read a brand see it
-  // read-only. Enforcement is server-side in the update action (§7).
+  // read-only. Enforcement is server-side in the update actions (§7).
   const canEdit = ctx.role === "owner" || ctx.role === "admin";
 
+  // Read the opaque JSONB back through the schema so the form gets a clean,
+  // typed value (null for empty/legacy data).
+  const parsedVoice = voiceProfileSchema.safeParse(brand.voiceProfile);
+  const voiceProfile = parsedVoice.success ? parsedVoice.data : null;
+
   return (
-    <div className="flex max-w-xl flex-col gap-6">
+    <div className="flex w-full max-w-xl flex-col gap-8">
       <div className="flex flex-col gap-1">
         <Link
           href="/brands"
@@ -39,26 +48,87 @@ export default async function BrandSettingsPage({
         <h1 className="font-heading text-2xl font-semibold">{brand.name}</h1>
       </div>
 
-      {canEdit ? (
-        <EditBrandForm
-          brand={{
-            id: brand.id,
-            name: brand.name,
-            timezone: brand.timezone,
-          }}
-        />
-      ) : (
-        <dl className="flex flex-col gap-3 text-sm">
-          <div>
-            <dt className="text-muted-foreground">Name</dt>
-            <dd>{brand.name}</dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">Timezone</dt>
-            <dd>{brand.timezone}</dd>
-          </div>
-        </dl>
-      )}
+      <section className="flex flex-col gap-4">
+        <h2 className="font-heading text-lg font-medium">Details</h2>
+        {canEdit ? (
+          <EditBrandForm
+            brand={{ id: brand.id, name: brand.name, timezone: brand.timezone }}
+          />
+        ) : (
+          <dl className="flex flex-col gap-3 text-sm">
+            <div>
+              <dt className="text-muted-foreground">Name</dt>
+              <dd>{brand.name}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Timezone</dt>
+              <dd>{brand.timezone}</dd>
+            </div>
+          </dl>
+        )}
+      </section>
+
+      <Separator />
+
+      <section className="flex flex-col gap-4">
+        <h2 className="font-heading text-lg font-medium">Voice profile</h2>
+        {canEdit ? (
+          <BrandVoiceForm brand={{ id: brand.id, voiceProfile }} />
+        ) : (
+          <ReadOnlyVoice voiceProfile={voiceProfile} />
+        )}
+      </section>
+
+      <Separator />
+
+      <section className="flex flex-col gap-4">
+        <h2 className="font-heading text-lg font-medium">Client contact</h2>
+        {canEdit ? (
+          <BrandContactForm
+            brand={{
+              id: brand.id,
+              clientContactEmail: brand.clientContactEmail,
+            }}
+          />
+        ) : (
+          <dl className="text-sm">
+            <dt className="text-muted-foreground">Client contact email</dt>
+            <dd>{brand.clientContactEmail ?? "—"}</dd>
+          </dl>
+        )}
+      </section>
     </div>
+  );
+}
+
+function ReadOnlyVoice({
+  voiceProfile,
+}: {
+  voiceProfile: VoiceProfile | null;
+}) {
+  if (!voiceProfile) {
+    return (
+      <p className="text-sm text-muted-foreground">No voice profile set.</p>
+    );
+  }
+  return (
+    <dl className="flex flex-col gap-3 text-sm">
+      <div>
+        <dt className="text-muted-foreground">Tone</dt>
+        <dd>{voiceProfile.tone || "—"}</dd>
+      </div>
+      <div>
+        <dt className="text-muted-foreground">Banned words</dt>
+        <dd>{voiceProfile.bannedWords?.join(", ") || "—"}</dd>
+      </div>
+      <div>
+        <dt className="text-muted-foreground">Hashtags</dt>
+        <dd>{voiceProfile.hashtags?.map((h) => `#${h}`).join(" ") || "—"}</dd>
+      </div>
+      <div>
+        <dt className="text-muted-foreground">Sample posts</dt>
+        <dd>{voiceProfile.samplePosts?.length ?? 0} saved</dd>
+      </div>
+    </dl>
   );
 }

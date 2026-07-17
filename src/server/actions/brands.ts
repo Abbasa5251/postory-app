@@ -1,13 +1,26 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createBrandSchema, updateBrandSchema } from "@/lib/validation/brands";
+import {
+  createBrandSchema,
+  updateBrandContactSchema,
+  updateBrandSchema,
+  updateBrandVoiceSchema,
+} from "@/lib/validation/brands";
 import {
   createBrand as createBrandInDal,
   getBrandById,
   updateBrand as updateBrandInDal,
+  updateBrandContact as updateBrandContactInDal,
+  updateBrandVoice as updateBrandVoiceInDal,
 } from "@/server/dal/brands";
 import { withAction } from "./with-action";
+
+// Both B2 saves share this after-write step: refresh the list + settings page.
+function revalidateBrand(id: string) {
+  revalidatePath("/brands");
+  revalidatePath(`/brands/${id}/settings`);
+}
 
 /**
  * Brand server actions (B1). Authored through `withAction` (ADR-013 / §7): the
@@ -36,8 +49,34 @@ export const updateBrand = withAction(
       name: data.name,
       timezone: data.timezone,
     });
-    revalidatePath("/brands");
-    revalidatePath(`/brands/${data.id}/settings`);
+    revalidateBrand(data.id);
     return { id: brand.id, name: data.name };
+  },
+);
+
+export const updateBrandVoice = withAction(
+  updateBrandVoiceSchema,
+  "brand:update",
+  async (data, ctx) => {
+    // §7 step 4 — scoped fetch: cross-org / nonexistent 404 before any write.
+    await getBrandById(ctx, data.id);
+    const brand = await updateBrandVoiceInDal(ctx, data.id, data.voiceProfile);
+    revalidateBrand(data.id);
+    return { id: brand.id };
+  },
+);
+
+export const updateBrandContact = withAction(
+  updateBrandContactSchema,
+  "brand:update",
+  async (data, ctx) => {
+    await getBrandById(ctx, data.id);
+    const brand = await updateBrandContactInDal(
+      ctx,
+      data.id,
+      data.clientContactEmail,
+    );
+    revalidateBrand(data.id);
+    return { id: brand.id };
   },
 );
