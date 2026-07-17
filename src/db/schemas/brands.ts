@@ -4,7 +4,6 @@ import {
   check,
   foreignKey,
   index,
-  integer,
   jsonb,
   pgTable,
   text,
@@ -52,13 +51,13 @@ export const brands = pgTable(
 );
 
 /**
- * zernio_profiles (ADR-009, amended) — brand ↔ Zernio profile is 1:N. A brand's
- * primary profile (profile_no 1) is provisioned LAZILY on first account
- * placement (B3), not at brand creation (B1) — a brand with no connected
- * accounts has no row here. Connecting a second account of an already-connected
- * platform auto-creates an overflow profile (2, 3, …). Invisible to users.
- * Remove the overflow codepath if R1 verification shows multiple same-platform
- * accounts per profile are allowed.
+ * zernio_profiles (ADR-009, re-amended after R1 resolved) — brand ↔ Zernio
+ * profile is 1:1. Zernio's own docs frame a profile as a "tenant boundary"
+ * container that holds any number of accounts (including multiples of the same
+ * platform), so a brand needs exactly one profile — no overflow profiles. The
+ * single profile is provisioned LAZILY on first account placement (B3), not at
+ * brand creation (B1): a brand with no connected accounts has no row here.
+ * Invisible to users.
  */
 export const zernioProfiles = pgTable(
   "zernio_profiles",
@@ -69,7 +68,6 @@ export const zernioProfiles = pgTable(
     // External Zernio id — one Zernio workspace key for all of POSTORY,
     // so this is globally unique, not per-org.
     zernioProfileId: text("zernio_profile_id").notNull(),
-    profileNo: integer("profile_no").notNull().default(1),
     ...timestamps(),
   },
   (t) => [
@@ -81,7 +79,8 @@ export const zernioProfiles = pgTable(
       columns: [t.orgId, t.brandId],
       foreignColumns: [brands.orgId, brands.id],
     }).onDelete("cascade"),
-    uniqueIndex("zernio_profiles_brand_no_uidx").on(t.brandId, t.profileNo),
+    // 1:1 (ADR-009 re-amended): at most one Zernio profile per brand.
+    uniqueIndex("zernio_profiles_brand_uidx").on(t.brandId),
     uniqueIndex("zernio_profiles_external_uidx").on(t.zernioProfileId),
     index("zernio_profiles_org_brand_idx").on(t.orgId, t.brandId),
   ],
@@ -103,8 +102,10 @@ export const socialAccounts = pgTable(
     zernioAccountId: text("zernio_account_id").notNull(),
     handle: text("handle").notNull(),
     avatarUrl: text("avatar_url"),
-    // B3 connection health + ADR-010 trial expiry: disconnect is a status
-    // flip, the row is retained for one-click reconnect.
+    // B3 connection health: `connected` (posting-capable) or `needs_reauth`
+    // (fires the Reconnect prompt), derived from Zernio's account health.
+    // Disconnect is a hard delete (row removed), not a status — so there is no
+    // `disconnected` value; reconnecting re-runs the connect flow.
     status: text("status").notNull().default("connected"),
     connectedBy: memberRef("connected_by"),
     ...timestamps(),
@@ -116,7 +117,7 @@ export const socialAccounts = pgTable(
     ),
     check(
       "social_accounts_status_check",
-      sql`${t.status} IN ('connected', 'needs_reauth', 'disconnected')`,
+      sql`${t.status} IN ('connected', 'needs_reauth')`,
     ),
     // Composite FK targets for post_platforms' same-org/same-brand proofs.
     unique("social_accounts_org_id_id_key").on(t.orgId, t.id),
@@ -133,11 +134,9 @@ export const socialAccounts = pgTable(
       columns: [t.brandId, t.zernioProfileId],
       foreignColumns: [zernioProfiles.brandId, zernioProfiles.id],
     }).onDelete("cascade"),
-    // ADR-009: one account per platform per profile (pending R1 verification).
-    uniqueIndex("social_accounts_profile_platform_uidx").on(
-      t.zernioProfileId,
-      t.platform,
-    ),
+    // ADR-009 (re-amended, R1 resolved): a brand's single profile MAY hold
+    // more than one account of the same platform, so there is no
+    // (zernio_profile_id, platform) uniqueness. Identity is the Zernio account.
     uniqueIndex("social_accounts_zernio_account_uidx").on(t.zernioAccountId),
     index("social_accounts_org_brand_idx").on(t.orgId, t.brandId),
   ],
@@ -178,7 +177,8 @@ export const brandsRelations = defineRelationsPart(
   { brands, zernioProfiles, socialAccounts, brandMembers, member },
   (r) => ({
     brands: {
-      zernioProfiles: r.many.zernioProfiles({
+      // 1:1 (ADR-009 re-amended): a brand has exactly one Zernio profile.
+      zernioProfile: r.one.zernioProfiles({
         from: r.brands.id,
         to: r.zernioProfiles.brandId,
       }),
