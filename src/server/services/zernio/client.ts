@@ -188,7 +188,9 @@ export async function disconnectAccount(
   zernioAccountId: string,
 ): Promise<void> {
   try {
-    await rawRequest(`/accounts/${zernioAccountId}`, { method: "DELETE" });
+    await rawRequest(`/accounts/${encodeURIComponent(zernioAccountId)}`, {
+      method: "DELETE",
+    });
   } catch (error) {
     if (error instanceof ZernioError && error.status === 404) return;
     throw error;

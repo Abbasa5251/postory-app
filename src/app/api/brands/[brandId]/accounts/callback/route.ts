@@ -45,9 +45,11 @@ export async function GET(
     const ctx = await getAuthCtx();
     authorize(ctx, "account:connect");
     // Persist/refresh from Zernio's account list for this profile. No health
-    // pull here: a just-completed OAuth means the account is healthy.
+    // pull: only the just-reconnected platform is proven healthy (others keep
+    // their status).
     await reconcileBrandAccounts(ctx, brandId, state.profileId, {
       mode: "connect",
+      platform: state.platform,
     });
     return done("?connected=1");
   } catch (error) {

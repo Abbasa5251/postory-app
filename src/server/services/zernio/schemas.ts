@@ -106,14 +106,21 @@ export type AccountStatus = "connected" | "needs_reauth";
  * "needs_reauth" would nag the user to reconnect a working account).
  */
 export function healthToStatus(entry: AccountHealthEntry): AccountStatus {
-  if (entry.canPost === false) return "needs_reauth";
+  // Conservative: `connected` requires a POSITIVE health signal; anything
+  // unknown/absent/negative is `needs_reauth`. A false "reconnect" nag is
+  // recoverable in one click, whereas a false "connected" becomes a silent
+  // publish failure. ⚠️ VERIFY (§3): retune the positive-signal set once the
+  // real health response shape is confirmed. (A shape mismatch fails the zod
+  // parse upstream, so reconcile preserves existing statuses rather than
+  // flipping everything to needs_reauth.)
+  if (entry.canPost === true) return "connected";
   if (
     entry.status &&
-    ["disconnected", "needs_reauth", "expired", "error"].includes(
+    ["active", "connected", "ok", "healthy"].includes(
       entry.status.toLowerCase(),
     )
   ) {
-    return "needs_reauth";
+    return "connected";
   }
-  return "connected";
+  return "needs_reauth";
 }

@@ -75,9 +75,10 @@ export async function getZernioProfileByBrand(ctx: AuthCtx, brandId: string) {
 /**
  * Persist a lazily-provisioned Zernio profile (ADR-009). The Zernio
  * `POST /profiles` call happens in the handler (§6: DAL is DB-only); this
- * records the returned external id. The `(brand_id)` unique backstops a race —
- * a losing concurrent insert surfaces as an error, not a second profile.
- * Case B (dal/audit.ts): DB-generated id, so insert then audit.
+ * records the returned external id. Concurrent first-connects are safe: the
+ * `(brand_id)` unique lets one row win; the loser gets no returned row
+ * (onConflictDoNothing), re-reads the winner's profile, and reuses it — so at
+ * most one profile persists and only the actual provisioner audits.
  */
 export async function createZernioProfile(
   ctx: AuthCtx,
@@ -88,14 +89,28 @@ export async function createZernioProfile(
   const [row] = await db
     .insert(zernioProfiles)
     .values({ orgId: ctx.orgId, brandId, zernioProfileId })
+    // Concurrent first-connects race here; the (brand_id) unique lets only one
+    // row persist (§7 I2). onConflictDoNothing turns the loser into an empty
+    // result instead of a throw.
+    .onConflictDoNothing({ target: zernioProfiles.brandId })
     .returning();
-  if (!row) throw new Error("zernio_profile insert returned no row");
-  await recordAuditEvent(ctx, {
-    action: "zernio_profile.provision",
-    entityType: "zernio_profile",
-    entityId: row.id,
-  });
-  return row;
+  if (row) {
+    await recordAuditEvent(ctx, {
+      action: "zernio_profile.provision",
+      entityType: "zernio_profile",
+      entityId: row.id,
+    });
+    return row;
+  }
+  // Lost the race: the brand already has a profile (the winner's, org+brand
+  // scoped). Reuse it — no audit, this request did not provision it.
+  const existing = await getZernioProfileByBrand(ctx, brandId);
+  if (!existing) {
+    throw new Error(
+      "zernio_profile insert conflicted but no existing row found",
+    );
+  }
+  return existing;
 }
 
 export type InsertSocialAccountInput = {

@@ -33,9 +33,12 @@ export async function POST(
   { params }: { params: Promise<{ brandId: string }> },
 ) {
   const { brandId } = await params;
+  // 303 See Other: this is a POST handler, so every redirect must switch the
+  // browser to GET (307/308 would replay the POST against the target).
   const back = (code: string) =>
     NextResponse.redirect(
       new URL(`/brands/${brandId}/accounts?error=${code}`, req.url),
+      303,
     );
 
   const platformId = req.nextUrl.searchParams.get("platform") ?? "";
@@ -62,7 +65,7 @@ export async function POST(
       callbackUrl,
     );
 
-    const res = NextResponse.redirect(authUrl);
+    const res = NextResponse.redirect(authUrl, 303);
     res.cookies.set(
       OAUTH_STATE_COOKIE,
       createState({
@@ -81,7 +84,7 @@ export async function POST(
     return res;
   } catch (error) {
     if (error instanceof UnauthorizedError) {
-      return NextResponse.redirect(new URL("/auth/sign-in", req.url));
+      return NextResponse.redirect(new URL("/auth/sign-in", req.url), 303);
     }
     // Cross-org / unassigned / nonexistent brand → same 404-shaped path (§7).
     if (error instanceof NotFoundError) return back("not_found");

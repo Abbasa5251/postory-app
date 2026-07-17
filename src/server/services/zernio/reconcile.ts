@@ -18,9 +18,10 @@ import { healthToStatus, type AccountStatus } from "./schemas";
  * refreshing existing ones' handle/avatar/status (audits `account.sync`).
  *
  * Status semantics differ by caller:
- *  - `mode: "connect"` (OAuth callback) — a just-completed OAuth means healthy,
- *    so every touched account becomes `connected` (this is what flips a
- *    reconnected account out of `needs_reauth`).
+ *  - `mode: "connect"` (OAuth callback) — a just-completed OAuth means the
+ *    reconnected `platform` is healthy, so only that platform's accounts become
+ *    `connected`. Accounts of OTHER platforms keep their existing status — an
+ *    Instagram reconnect must not flip a still-expired Facebook to `connected`.
  *  - `mode: "health"` (manual Refresh) — pull `GET /accounts/health` and apply
  *    it; an account ABSENT from the health response keeps its current status
  *    (never silently downgraded to `connected`), and a health-call failure is
@@ -30,7 +31,7 @@ export async function reconcileBrandAccounts(
   ctx: AuthCtx,
   brandId: string,
   profileId: string,
-  opts: { mode: "connect" | "health" },
+  opts: { mode: "connect"; platform: string } | { mode: "health" },
 ): Promise<void> {
   const zAccounts = await listAccounts(profileId);
 
@@ -60,12 +61,20 @@ export async function reconcileBrandAccounts(
     if (!isPlatform(acct.platform)) continue;
 
     const isExisting = existingStatus.has(acct.zernioAccountId);
-    const status: AccountStatus =
-      opts.mode === "connect"
-        ? "connected"
-        : (statusByZid.get(acct.zernioAccountId) ??
-          existingStatus.get(acct.zernioAccountId) ??
-          "connected");
+    let status: AccountStatus;
+    if (opts.mode === "connect") {
+      // Only the reconnected platform is proven healthy; others preserve their
+      // existing status (a new account of another platform defaults connected).
+      status =
+        acct.platform === opts.platform
+          ? "connected"
+          : (existingStatus.get(acct.zernioAccountId) ?? "connected");
+    } else {
+      status =
+        statusByZid.get(acct.zernioAccountId) ??
+        existingStatus.get(acct.zernioAccountId) ??
+        "connected";
+    }
 
     if (isExisting) {
       await syncSocialAccount(ctx, brandId, {

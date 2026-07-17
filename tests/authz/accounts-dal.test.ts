@@ -80,6 +80,25 @@ describe("accounts DAL — org scoping is structurally present", () => {
     ).toBe(true);
   });
 
+  it("createZernioProfile reuses the existing row on a concurrent conflict (no audit)", async () => {
+    // onConflictDoNothing → 0 returned rows (the losing racer)...
+    const calls = captureInserts(insert, []);
+    // ...then the scoped re-read finds the winner's profile.
+    makeSelectChain(select, [
+      { id: "zp_win", brandId: "brand_1", zernioProfileId: "zernio_win" },
+    ]);
+    const row = await createZernioProfile(adminCtx, "brand_1", "zernio_abc");
+    expect((row as { id: string }).id).toBe("zp_win");
+    // No provision audit — this request didn't create the profile.
+    expect(
+      calls.some(
+        (c) =>
+          (c.values as { action?: string }).action ===
+          "zernio_profile.provision",
+      ),
+    ).toBe(false);
+  });
+
   it("insertSocialAccount writes org_id from ctx and audits account.connect on a real insert", async () => {
     const calls = captureInserts(insert, [{ id: "sa_1" }]);
     const row = await insertSocialAccount(adminCtx, {

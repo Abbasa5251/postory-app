@@ -78,9 +78,15 @@ describe("healthToStatus", () => {
     );
   });
 
-  it("defaults unknown/absent signals to connected (optimistic)", () => {
-    expect(healthToStatus({ _id: "a1" })).toBe("connected");
+  it("classifies only a positive signal as connected", () => {
     expect(healthToStatus({ _id: "a1", canPost: true })).toBe("connected");
     expect(healthToStatus({ _id: "a1", status: "active" })).toBe("connected");
+  });
+
+  it("treats unknown/absent signals as needs_reauth (conservative)", () => {
+    expect(healthToStatus({ _id: "a1" })).toBe("needs_reauth");
+    expect(healthToStatus({ _id: "a1", status: "mystery" })).toBe(
+      "needs_reauth",
+    );
   });
 });
