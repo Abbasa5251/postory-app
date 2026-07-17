@@ -5,7 +5,7 @@ import { brands } from "@/db/schemas/brands";
 import type { CreateBrandInput } from "@/lib/validation/brands";
 import { dedupeSlug, slugify } from "@/server/domain/brand-slug";
 import { NotFoundError } from "@/server/domain/errors";
-import { recordAuditEvent } from "./audit";
+import { buildAuditInsert, recordAuditEvent } from "./audit";
 import { assertBrandAccess, brandScope, orgScope } from "./scope";
 import type { AuthCtx } from "./types";
 
@@ -92,4 +92,38 @@ export async function createBrand(ctx: AuthCtx, input: CreateBrandInput) {
     metadata: { name: input.name, slug, timezone: input.timezone },
   });
   return row;
+}
+
+/**
+ * Update a brand's editable fields (B1.2). Role gated upstream by
+ * authorize("brand:update"); the action does the §7 step-4 scoped fetch
+ * (getBrandById) before calling this, so cross-org/nonexistent ids 404 before
+ * any write. `slug` is intentionally never updated — it's immutable (routing
+ * is by id, B1 grill).
+ */
+export async function updateBrand(
+  ctx: AuthCtx,
+  brandId: string,
+  input: CreateBrandInput,
+) {
+  assertBrandAccess(ctx, brandId);
+  // Case A (dal/audit.ts): the id is known up-front, so the update and its
+  // audit run as one atomic db.batch — an audit failure rolls back the update.
+  const [updated] = await db.batch([
+    db
+      .update(brands)
+      .set({ name: input.name, timezone: input.timezone })
+      .where(and(orgScope(ctx, brands), eq(brands.id, brandId)))
+      .returning({ id: brands.id }),
+    buildAuditInsert(ctx, {
+      action: "brand.update",
+      entityType: "brand",
+      entityId: brandId,
+      metadata: { name: input.name, timezone: input.timezone },
+    }),
+  ]);
+  // 0 rows: a genuine race (deleted between the action's scoped fetch and here)
+  // — the accepted Case-A residual leaves a no-op audit row.
+  if (updated.length === 0) throw new NotFoundError("brand", brandId);
+  return updated[0];
 }

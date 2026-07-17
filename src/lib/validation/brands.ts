@@ -18,3 +18,14 @@ export const createBrandSchema = z.object({
 });
 
 export type CreateBrandInput = z.infer<typeof createBrandSchema>;
+
+/**
+ * Update input (B1.2). Same editable fields as create — slug is immutable and
+ * derived, so it is never an input — plus the target brand `id`. Composes
+ * createBrandSchema so the name/timezone rules stay single-sourced (§4).
+ */
+export const updateBrandSchema = createBrandSchema.extend({
+  id: z.string().min(1, "Brand id is required."),
+});
+
+export type UpdateBrandInput = z.infer<typeof updateBrandSchema>;

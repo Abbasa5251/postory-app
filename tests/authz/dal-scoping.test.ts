@@ -1,10 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createBrand, getBrandById, listBrands } from "@/server/dal/brands";
+import {
+  createBrand,
+  getBrandById,
+  listBrands,
+  updateBrand,
+} from "@/server/dal/brands";
 import { NotFoundError } from "@/server/domain/errors";
 import { memberCtx } from "../helpers/ctx";
 import {
   captureInserts,
+  captureUpdate,
+  makeBatch,
   makeSelectChain,
+  renderedSql,
   renderedWhere,
 } from "../helpers/db-mock";
 
@@ -18,11 +26,13 @@ import {
 
 // The db client is mocked, not imported (AGENTS.md §6 boundary; the hoisted
 // spy must live in this file — vitest hoists vi.mock per-module).
-const { select, insert } = vi.hoisted(() => ({
+const { select, insert, update, batch } = vi.hoisted(() => ({
   select: vi.fn(),
   insert: vi.fn(),
+  update: vi.fn(),
+  batch: vi.fn(),
 }));
-vi.mock("@/db/db", () => ({ db: { select, insert } }));
+vi.mock("@/db/db", () => ({ db: { select, insert, update, batch } }));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -129,6 +139,71 @@ describe("createBrand — writes are org-scoped and audited", () => {
     });
 
     expect(row).toEqual({ id: "brand_new" });
+  });
+});
+
+describe("updateBrand — org+id-scoped, audited, slug untouched", () => {
+  it("updates name+timezone scoped by org AND id, pairs a brand.update audit, never sets slug", async () => {
+    const upd = captureUpdate(update, [{ id: "b1" }]);
+    const inserts = captureInserts(insert, [{ id: "audit_1" }]);
+    makeBatch(batch);
+
+    const row = await updateBrand(
+      memberCtx({ role: "admin", brandIds: "all" }),
+      "b1",
+      { name: "Renamed Co", timezone: "Europe/London" },
+    );
+
+    // The update's where is scoped by org AND id (belt AND suspenders, §6.4).
+    const where = renderedSql(upd.where!);
+    expect(where.sql).toContain('"brands"."org_id" = $1');
+    expect(where.sql).toContain('"brands"."id" = $2');
+    expect(where.params).toEqual(["org_1", "b1"]);
+
+    // Only name + timezone are set — slug is immutable (B1 grill).
+    const setPayload = upd.set as Record<string, unknown>;
+    expect(setPayload).toEqual({
+      name: "Renamed Co",
+      timezone: "Europe/London",
+    });
+    expect(setPayload).not.toHaveProperty("slug");
+
+    // Paired brand.update audit with the changed fields as the diff (§6.6).
+    const audit = inserts[0]!.values as Record<string, unknown>;
+    expect(audit.action).toBe("brand.update");
+    expect(audit.entityId).toBe("b1");
+    expect(audit.metadata).toEqual({
+      name: "Renamed Co",
+      timezone: "Europe/London",
+    });
+
+    expect(row).toEqual({ id: "b1" });
+  });
+
+  it("throws NotFoundError when the scoped update matches no row (cross-org / deleted)", async () => {
+    captureUpdate(update, []); // 0 rows — id not in the caller's org
+    captureInserts(insert, []);
+    makeBatch(batch);
+
+    await expect(
+      updateBrand(memberCtx({ role: "admin", brandIds: "all" }), "b_other", {
+        name: "Whatever Co",
+        timezone: "UTC",
+      }),
+    ).rejects.toThrow(NotFoundError);
+  });
+
+  it("rejects a creator's unassigned brand before any update runs", async () => {
+    captureUpdate(update, [{ id: "b9" }]);
+    makeBatch(batch);
+
+    await expect(
+      updateBrand(memberCtx({ role: "creator", brandIds: ["b1"] }), "b9", {
+        name: "Whatever Co",
+        timezone: "UTC",
+      }),
+    ).rejects.toThrow(NotFoundError);
+    expect(update).not.toHaveBeenCalled();
   });
 });
 

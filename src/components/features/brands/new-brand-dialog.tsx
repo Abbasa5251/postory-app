@@ -14,20 +14,13 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import {
-  Combobox,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxItem,
-  ComboboxList,
-} from "@/components/ui/combobox";
 import { Field, FieldError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
-import { supportedTimeZones } from "@/lib/timezones";
+import { useActionForm } from "@/hooks/use-action-form";
 import { createBrand } from "@/server/actions/brands";
+import { BrandTimezoneField } from "./brand-timezone-field";
 
 // Smart default (B1): pre-select the creator's own timezone. Falls back to UTC
 // if the runtime can't resolve one. Evaluated client-side only (the dialog
@@ -40,11 +33,6 @@ function browserTimeZone(): string {
   }
 }
 
-// `Intl.supportedValuesOf` omits the bare "UTC" alias, but browserTimeZone()
-// can produce it (as the fallback, or on a UTC-set machine) — include it so the
-// default is always reselectable after clearing the field.
-const TIME_ZONES = ["UTC", ...supportedTimeZones.filter((tz) => tz !== "UTC")];
-
 /**
  * "New brand" dialog (B1). Name + timezone only — logo/colors/approval land
  * with the epics that consume them. Submits to the `createBrand` action and
@@ -54,46 +42,30 @@ const TIME_ZONES = ["UTC", ...supportedTimeZones.filter((tz) => tz !== "UTC")];
 export function NewBrandDialog() {
   const [open, setOpen] = useState(false);
   const [timezone, setTimezone] = useState(browserTimeZone);
-  const [pending, setPending] = useState(false);
-  const [message, setMessage] = useState<string>();
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>();
+  const { pending, message, fieldErrors, reset, run } = useActionForm(
+    createBrand,
+    {
+      onSuccess: (data) => {
+        toast.success(`Brand "${data.name}" created`);
+        setOpen(false);
+      },
+    },
+  );
 
   // Reset transient form state whenever the dialog closes (handled here, not
   // in an effect — it's a user event, not derived state).
   function handleOpenChange(next: boolean) {
     setOpen(next);
     if (!next) {
-      setMessage(undefined);
-      setFieldErrors(undefined);
+      reset();
       setTimezone(browserTimeZone());
     }
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const name = String(new FormData(event.currentTarget).get("name") ?? "");
-    setPending(true);
-    setMessage(undefined);
-    setFieldErrors(undefined);
-
-    try {
-      const result = await createBrand({ name, timezone });
-      if (!result.ok) {
-        // VALIDATION → inline field errors; everything else → a general message.
-        setFieldErrors(result.error.fieldErrors);
-        if (result.error.code !== "VALIDATION")
-          setMessage(result.error.message);
-        return;
-      }
-      toast.success(`Brand "${result.data.name}" created`);
-      setOpen(false);
-    } catch {
-      // The action rejected rather than returning (a dev re-throw of an
-      // unexpected error, or a network failure) — show a generic message.
-      setMessage("Something went wrong. Please try again.");
-    } finally {
-      setPending(false);
-    }
+    void run({ name, timezone });
   }
 
   return (
@@ -132,32 +104,12 @@ export function NewBrandDialog() {
               <FieldError>{fieldErrors?.name?.[0]}</FieldError>
             </Field>
 
-            <Field data-invalid={!!fieldErrors?.timezone}>
-              <Label htmlFor="brand-timezone">Timezone</Label>
-              <Combobox
-                items={TIME_ZONES}
-                value={timezone}
-                onValueChange={(value) => setTimezone(value ?? "")}
-                disabled={pending}
-              >
-                <ComboboxInput
-                  id="brand-timezone"
-                  placeholder="Search timezone…"
-                  aria-invalid={!!fieldErrors?.timezone}
-                />
-                <ComboboxContent>
-                  <ComboboxEmpty>No timezone found.</ComboboxEmpty>
-                  <ComboboxList>
-                    {(tz: string) => (
-                      <ComboboxItem key={tz} value={tz}>
-                        {tz}
-                      </ComboboxItem>
-                    )}
-                  </ComboboxList>
-                </ComboboxContent>
-              </Combobox>
-              <FieldError>{fieldErrors?.timezone?.[0]}</FieldError>
-            </Field>
+            <BrandTimezoneField
+              value={timezone}
+              onValueChange={setTimezone}
+              disabled={pending}
+              error={fieldErrors?.timezone?.[0]}
+            />
 
             {message && <p className="text-sm text-destructive">{message}</p>}
           </div>

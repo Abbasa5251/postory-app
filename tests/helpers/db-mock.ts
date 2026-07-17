@@ -49,6 +49,55 @@ export function renderedWhere(chain: SelectChain) {
   return dialect.sqlToQuery(chain.where.mock.calls[0]![0] as SQL);
 }
 
+/** Renders a captured SQL fragment (e.g. an update's where) to `{ sql, params }`. */
+export function renderedSql(sql: SQL) {
+  return dialect.sqlToQuery(sql);
+}
+
+/** The captured `db.update(table).set(payload).where(cond)` of one update. */
+export type UpdateCall = { table: unknown; set: unknown; where?: SQL };
+
+/**
+ * update() mock wired onto `updateFn`, capturing `.set()`/`.where()`.
+ * `.returning()` resolves to `returningRows` (a Promise, so it slots into a
+ * `db.batch([...])` array — see `makeBatch`). Empty `returningRows` models a
+ * 0-row update (row not in the caller's org → NotFound).
+ */
+export function captureUpdate(
+  updateFn: Mock,
+  returningRows: unknown[] = [],
+): UpdateCall {
+  const record: UpdateCall = { table: undefined, set: undefined };
+  updateFn.mockImplementation((table: unknown) => {
+    record.table = table;
+    const chain = {
+      set(payload: unknown) {
+        record.set = payload;
+        return chain;
+      },
+      where(cond: SQL) {
+        record.where = cond;
+        return chain;
+      },
+      returning: () => Promise.resolve(returningRows),
+    };
+    return chain;
+  });
+  return record;
+}
+
+/**
+ * batch() mock: `db.batch([...])` resolves each statement (the atomic Case-A
+ * template in dal/audit.ts pairs an update's `.returning()` with an audit
+ * insert). Statements are already thenables here, so awaiting them all mirrors
+ * the driver's all-or-nothing resolution.
+ */
+export function makeBatch(batchFn: Mock) {
+  batchFn.mockImplementation((statements: unknown[]) =>
+    Promise.all(statements),
+  );
+}
+
 /** One captured `db.insert(table).values(payload)` call. */
 export type InsertCall = { table: unknown; values: unknown };
 

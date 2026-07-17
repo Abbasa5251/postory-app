@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isValidTimeZone } from "@/lib/timezones";
-import { createBrandSchema } from "@/lib/validation/brands";
+import { createBrandSchema, updateBrandSchema } from "@/lib/validation/brands";
 
 /**
  * B1 seam 1 (pure): brand input validation + timezone check. Boundaries only —
@@ -61,5 +61,33 @@ describe("createBrandSchema", () => {
         .success,
     ).toBe(false);
     expect(createBrandSchema.safeParse({ name: "Acme" }).success).toBe(false);
+  });
+});
+
+describe("updateBrandSchema", () => {
+  it("requires id and validates name/timezone like create", () => {
+    expect(
+      updateBrandSchema.safeParse({ id: "b1", name: "Acme", timezone: "UTC" })
+        .success,
+    ).toBe(true);
+    // missing id
+    expect(
+      updateBrandSchema.safeParse({ name: "Acme", timezone: "UTC" }).success,
+    ).toBe(false);
+    // shares the create name/timezone rules
+    expect(
+      updateBrandSchema.safeParse({ id: "b1", name: "a", timezone: "UTC" })
+        .success,
+    ).toBe(false);
+    expect(
+      updateBrandSchema.safeParse({ id: "b1", name: "Acme", timezone: "X/Y" })
+        .success,
+    ).toBe(false);
+  });
+
+  it("trims the name", () => {
+    expect(
+      updateBrandSchema.parse({ id: "b1", name: "  Acme  ", timezone: "UTC" }),
+    ).toEqual({ id: "b1", name: "Acme", timezone: "UTC" });
   });
 });

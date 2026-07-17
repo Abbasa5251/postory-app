@@ -15,6 +15,16 @@ export const supportedTimeZones: readonly string[] =
   Intl.supportedValuesOf("timeZone");
 
 /**
+ * Picker options: the canonical IANA zones plus the bare `"UTC"` alias that
+ * `Intl.supportedValuesOf` omits — so the browser-tz smart default and the DB
+ * `UTC` fallback are always reselectable after clearing the field.
+ */
+export const timeZoneOptions: string[] = [
+  "UTC",
+  ...supportedTimeZones.filter((tz) => tz !== "UTC"),
+];
+
+/**
  * True if `tz` is a timezone the runtime accepts. Uses `Intl.DateTimeFormat`
  * rather than `supportedTimeZones.includes` so it also accepts valid aliases
  * outside the canonical list — notably the `"UTC"` fallback stored by
