@@ -27,7 +27,7 @@ export default async function DashboardLayout({
     // A member whose active org is null (cleared, or a pre-org session) — heal
     // it rather than treating it as onboarding. Redirect after recovery so the
     // re-run reads the now-persisted active org; only org-less users onboard.
-    const recovery = await recoverActiveOrg(requestHeaders);
+    const recovery = await recoverActiveOrg(requestHeaders, session.user.id);
     redirect(recovery === "recovered" ? "/dashboard" : "/onboarding");
   }
 

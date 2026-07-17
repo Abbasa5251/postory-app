@@ -12,7 +12,9 @@ export default async function OnboardingPage() {
   const session = await auth.api.getSession({ headers: requestHeaders });
   if (!session) redirect("/auth/sign-in");
   if (session.session.activeOrganizationId) redirect("/dashboard");
-  if ((await recoverActiveOrg(requestHeaders)) === "recovered") {
+  if (
+    (await recoverActiveOrg(requestHeaders, session.user.id)) === "recovered"
+  ) {
     redirect("/dashboard");
   }
 
