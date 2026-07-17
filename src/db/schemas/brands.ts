@@ -177,7 +177,8 @@ export const brandsRelations = defineRelationsPart(
   { brands, zernioProfiles, socialAccounts, brandMembers, member },
   (r) => ({
     brands: {
-      zernioProfiles: r.many.zernioProfiles({
+      // 1:1 (ADR-009 re-amended): a brand has exactly one Zernio profile.
+      zernioProfile: r.one.zernioProfiles({
         from: r.brands.id,
         to: r.zernioProfiles.brandId,
       }),

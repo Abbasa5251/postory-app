@@ -51,5 +51,10 @@ webhook processing.
 - This carve-out is **narrow**: it authorizes inline external calls for the OAuth handshake only.
   Any temptation to run generation/publish/analytics calls inline still violates ADR-003.
 - An abandoned OAuth flow can leave an **empty Zernio profile** (zero accounts). This is harmless
-  (profiles are free; Zernio bills per account-day) and is reused on the next connect attempt —
-  profile creation is reuse-if-exists.
+  (profiles are free; Zernio bills per account-day) and is reused on the next connect attempt.
+- **One profile per Brand is guaranteed** without a separate reservation record: the connect-init
+  reads the brand's profile and creates one only if absent, the `zernio_profiles (brand_id)` unique
+  makes at most one row persist, and the create is keyed by a brand-derived `Idempotency-Key`. A
+  lost concurrent race therefore produces at most a harmless orphaned (free, account-less) Zernio
+  profile, never a duplicate `zernio_profiles` row — so a durable claim/wait-retry protocol would be
+  disproportionate for a zero-cost, unlimited resource.
