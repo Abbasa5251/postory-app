@@ -26,6 +26,7 @@ import {
   userCreatedEvent,
 } from "./auth-audit";
 import { ac, assertAssignableRole, roles } from "./permissions";
+import { selectInitialOrganizationId } from "./select-initial-org";
 
 export const auth = betterAuth({
   appName: "POSTORY",
@@ -125,19 +126,14 @@ export const auth = betterAuth({
         before: async (session, ctx) => {
           // Set the active org on every fresh sign-in so users never land in
           // a session without tenancy. Org creation and invitation acceptance
-          // also set it (plugin behavior); this covers plain sign-ins.
-          // better-auth tables are queried via better-auth's own adapter, not
-          // drizzle (AGENTS.md §6: better-auth-owned tables).
+          // also set it (plugin behavior); this covers plain sign-ins. The
+          // earliest-membership policy is shared with gate recovery
+          // (select-initial-org.ts) so both paths pick the same tenant.
           if (!ctx) return;
-          const members = await ctx.context.adapter.findMany<{
-            organizationId: string;
-          }>({
-            model: "member",
-            where: [{ field: "userId", value: session.userId }],
-            sortBy: { field: "createdAt", direction: "asc" },
-            limit: 1,
-          });
-          const organizationId = members[0]?.organizationId;
+          const organizationId = await selectInitialOrganizationId(
+            ctx.context.adapter,
+            session.userId,
+          );
           if (!organizationId) return;
           return { data: { ...session, activeOrganizationId: organizationId } };
         },
