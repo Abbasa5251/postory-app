@@ -52,11 +52,13 @@ export const brands = pgTable(
 );
 
 /**
- * zernio_profiles (ADR-009) — brand ↔ Zernio profile is 1:N. Each brand owns
- * a primary profile (profile_no 1); connecting a second account of an
- * already-connected platform auto-creates an overflow profile (2, 3, …).
- * Invisible to users. Remove the overflow codepath if R1 verification shows
- * multiple same-platform accounts per profile are allowed.
+ * zernio_profiles (ADR-009, amended) — brand ↔ Zernio profile is 1:N. A brand's
+ * primary profile (profile_no 1) is provisioned LAZILY on first account
+ * placement (B3), not at brand creation (B1) — a brand with no connected
+ * accounts has no row here. Connecting a second account of an already-connected
+ * platform auto-creates an overflow profile (2, 3, …). Invisible to users.
+ * Remove the overflow codepath if R1 verification shows multiple same-platform
+ * accounts per profile are allowed.
  */
 export const zernioProfiles = pgTable(
   "zernio_profiles",
