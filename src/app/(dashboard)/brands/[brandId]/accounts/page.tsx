@@ -89,9 +89,10 @@ export default async function BrandAccountsPage({
           <h2 className="font-heading text-lg font-medium">
             Connected accounts
           </h2>
-          {canManage && accounts.length > 0 && (
-            <RefreshAccountsButton brandId={brand.id} />
-          )}
+          {/* Always available to managers — Refresh is also how a drifted
+              connection (authorized at Zernio but not persisted here, e.g. a
+              closed tab) self-heals, which must work even with zero local rows. */}
+          {canManage && <RefreshAccountsButton brandId={brand.id} />}
         </div>
         {accounts.length === 0 ? (
           <p className="text-sm text-muted-foreground">

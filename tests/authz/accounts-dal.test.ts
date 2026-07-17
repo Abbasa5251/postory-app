@@ -128,7 +128,7 @@ describe("syncSocialAccount — org scoping is structurally present", () => {
     const upd = captureUpdate(update, [{ id: "sa_1" }]);
     captureInserts(insert); // audit insert inside the batch
     makeBatch(batch);
-    const changed = await syncSocialAccount(adminCtx, {
+    const changed = await syncSocialAccount(adminCtx, "brand_1", {
       zernioAccountId: "za_1",
       handle: "@acme",
       avatarUrl: null,
@@ -138,6 +138,7 @@ describe("syncSocialAccount — org scoping is structurally present", () => {
     const { sql, params } = renderedSql(upd.where!);
     expect(sql).toContain("org_id");
     expect(params).toContain("org_1");
+    expect(params).toContain("brand_1");
     expect(params).toContain("za_1");
   });
 });
@@ -162,14 +163,15 @@ describe("getSocialAccountById / deleteSocialAccountById — scoping (#31)", () 
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 
-  it("deleteSocialAccountById deletes by (org_id, id) and audits disconnect", async () => {
+  it("deleteSocialAccountById deletes by (org_id, brand_id, id) and audits disconnect", async () => {
     const delCall = captureDelete(del, [{ id: "sa_1" }]);
     const inserts = captureInserts(insert);
     makeBatch(batch);
-    await deleteSocialAccountById(adminCtx, "sa_1");
+    await deleteSocialAccountById(adminCtx, "brand_1", "sa_1");
     const { sql, params } = renderedSql(delCall.where!);
     expect(sql).toContain("org_id");
     expect(params).toContain("org_1");
+    expect(params).toContain("brand_1");
     expect(params).toContain("sa_1");
     expect(
       inserts.some(
@@ -184,7 +186,7 @@ describe("getSocialAccountById / deleteSocialAccountById — scoping (#31)", () 
     captureInserts(insert);
     makeBatch(batch);
     await expect(
-      deleteSocialAccountById(adminCtx, "sa_x"),
+      deleteSocialAccountById(adminCtx, "brand_1", "sa_x"),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 });
@@ -219,6 +221,29 @@ describe("accounts DAL — brand access is enforced for creators", () => {
         avatarUrl: null,
         status: "connected",
       }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("syncSocialAccount 404s on an unassigned brand", async () => {
+    captureUpdate(update, [{ id: "sa_1" }]);
+    captureInserts(insert);
+    makeBatch(batch);
+    await expect(
+      syncSocialAccount(creatorCtx, "brand_2", {
+        zernioAccountId: "za_1",
+        handle: "@acme",
+        avatarUrl: null,
+        status: "connected",
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("deleteSocialAccountById 404s on an unassigned brand", async () => {
+    captureDelete(del, [{ id: "sa_1" }]);
+    captureInserts(insert);
+    makeBatch(batch);
+    await expect(
+      deleteSocialAccountById(creatorCtx, "brand_2", "sa_1"),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 });

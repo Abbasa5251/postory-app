@@ -154,6 +154,7 @@ export async function insertSocialAccount(
  */
 export async function syncSocialAccount(
   ctx: AuthCtx,
+  brandId: string,
   input: {
     zernioAccountId: string;
     handle: string;
@@ -161,6 +162,7 @@ export async function syncSocialAccount(
     status: AccountStatus;
   },
 ) {
+  assertBrandAccess(ctx, brandId);
   const [updated] = await db.batch([
     db
       .update(socialAccounts)
@@ -172,6 +174,7 @@ export async function syncSocialAccount(
       .where(
         and(
           orgScope(ctx, socialAccounts),
+          eq(socialAccounts.brandId, brandId),
           eq(socialAccounts.zernioAccountId, input.zernioAccountId),
         ),
       )
@@ -194,12 +197,21 @@ export async function syncSocialAccount(
  * disconnect (which stops account-day billing) is the action's job, before this
  * — the DAL stays DB-only (§6).
  */
-export async function deleteSocialAccountById(ctx: AuthCtx, accountId: string) {
+export async function deleteSocialAccountById(
+  ctx: AuthCtx,
+  brandId: string,
+  accountId: string,
+) {
+  assertBrandAccess(ctx, brandId);
   const [deleted] = await db.batch([
     db
       .delete(socialAccounts)
       .where(
-        and(orgScope(ctx, socialAccounts), eq(socialAccounts.id, accountId)),
+        and(
+          orgScope(ctx, socialAccounts),
+          eq(socialAccounts.brandId, brandId),
+          eq(socialAccounts.id, accountId),
+        ),
       )
       .returning({ id: socialAccounts.id }),
     buildAuditInsert(ctx, {

@@ -37,7 +37,7 @@ export const refreshBrandAccounts = withAction(
     // No profile → the brand has never connected an account; nothing to sync.
     if (profile) {
       await reconcileBrandAccounts(ctx, data.brandId, profile.zernioProfileId, {
-        withHealth: true,
+        mode: "health",
       });
     }
     revalidatePath(`/brands/${data.brandId}/accounts`);
@@ -65,7 +65,7 @@ export const disconnectAccount = withAction(
     // Stop the Zernio meter first (idempotent; a 404 there is swallowed), then
     // remove our row + audit.
     await zernioDisconnect(account.zernioAccountId);
-    await deleteSocialAccountById(ctx, data.accountId);
+    await deleteSocialAccountById(ctx, data.brandId, data.accountId);
     revalidatePath(`/brands/${data.brandId}/accounts`);
     return { accountId: data.accountId };
   },
