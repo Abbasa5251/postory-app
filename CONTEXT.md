@@ -33,6 +33,20 @@ account — they exist only as a `client_contact_email` on a Brand and as portal
 tokens.
 _Avoid_: Customer, user, reviewer, stakeholder (loosely).
 
+### Brand content & voice
+
+**Voice Profile**:
+A Brand's optional AI guidance — a free-text tone, banned words, preferred Brand
+Hashtags, and sample posts — that seeds all AI copy and image generation for
+that Brand. Stored per Brand; absent means "no guidance" (AI degrades
+gracefully).
+_Avoid_: brand voice settings, style guide, persona, tone (tone is one field of it).
+
+**Brand Hashtags**:
+A single flat list of a Brand's preferred hashtags, one field of its Voice
+Profile; the composer and AI draw from it. Stored bare (no leading `#`).
+_Avoid_: hashtag sets, tags, keywords.
+
 ### Publishing plumbing
 
 **Zernio Profile**:

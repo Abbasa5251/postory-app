@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { isValidTimeZone } from "@/lib/timezones";
-import { createBrandSchema, updateBrandSchema } from "@/lib/validation/brands";
+import {
+  createBrandSchema,
+  updateBrandContactSchema,
+  updateBrandSchema,
+  updateBrandVoiceSchema,
+  voiceProfileSchema,
+} from "@/lib/validation/brands";
 
 /**
  * B1 seam 1 (pure): brand input validation + timezone check. Boundaries only —
@@ -89,5 +95,94 @@ describe("updateBrandSchema", () => {
     expect(
       updateBrandSchema.parse({ id: "b1", name: "  Acme  ", timezone: "UTC" }),
     ).toEqual({ id: "b1", name: "Acme", timezone: "UTC" });
+  });
+});
+
+describe("voiceProfileSchema", () => {
+  it("normalizes arrays: strips '#', trims, dedupes", () => {
+    const parsed = voiceProfileSchema.parse({
+      tone: "  warm, a little cheeky ",
+      bannedWords: [" cheap ", "cheap", "spam"],
+      hashtags: ["#Sale", "sale", "New"],
+      samplePosts: ["Post one", " Post one "],
+    });
+    expect(parsed.tone).toBe("warm, a little cheeky");
+    expect(parsed.bannedWords).toEqual(["cheap", "spam"]);
+    expect(parsed.hashtags).toEqual(["Sale", "New"]);
+    expect(parsed.samplePosts).toEqual(["Post one"]);
+  });
+
+  it("accepts an empty object (all fields optional)", () => {
+    expect(voiceProfileSchema.safeParse({}).success).toBe(true);
+  });
+
+  it("rejects over-limit input", () => {
+    expect(
+      voiceProfileSchema.safeParse({ tone: "x".repeat(501) }).success,
+    ).toBe(false);
+    expect(
+      voiceProfileSchema.safeParse({ bannedWords: ["x".repeat(51)] }).success,
+    ).toBe(false);
+    expect(
+      voiceProfileSchema.safeParse({
+        bannedWords: Array.from({ length: 101 }, (_, i) => `w${i}`),
+      }).success,
+    ).toBe(false);
+    expect(
+      voiceProfileSchema.safeParse({
+        hashtags: Array.from({ length: 31 }, (_, i) => `h${i}`),
+      }).success,
+    ).toBe(false);
+    expect(
+      voiceProfileSchema.safeParse({ samplePosts: ["x".repeat(2001)] }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a hashtag with illegal characters", () => {
+    expect(
+      voiceProfileSchema.safeParse({ hashtags: ["not a tag"] }).success,
+    ).toBe(false);
+  });
+});
+
+describe("updateBrandVoiceSchema", () => {
+  it("requires id and collapses an all-empty profile to null", () => {
+    expect(updateBrandVoiceSchema.safeParse({ voiceProfile: {} }).success).toBe(
+      false,
+    ); // no id
+    const empty = updateBrandVoiceSchema.parse({
+      id: "b1",
+      voiceProfile: { bannedWords: [], hashtags: [], samplePosts: [] },
+    });
+    expect(empty.voiceProfile).toBeNull();
+    const populated = updateBrandVoiceSchema.parse({
+      id: "b1",
+      voiceProfile: { tone: "warm" },
+    });
+    expect(populated.voiceProfile).toEqual({ tone: "warm" });
+  });
+});
+
+describe("updateBrandContactSchema", () => {
+  it("accepts a valid email, clears on empty, rejects invalid", () => {
+    expect(
+      updateBrandContactSchema.parse({
+        id: "b1",
+        clientContactEmail: " a@b.com ",
+      }),
+    ).toEqual({ id: "b1", clientContactEmail: "a@b.com" });
+    expect(
+      updateBrandContactSchema.parse({ id: "b1", clientContactEmail: "" }),
+    ).toEqual({ id: "b1", clientContactEmail: null });
+    expect(
+      updateBrandContactSchema.safeParse({
+        id: "b1",
+        clientContactEmail: "nope",
+      }).success,
+    ).toBe(false);
+    expect(
+      updateBrandContactSchema.safeParse({ clientContactEmail: "a@b.com" })
+        .success,
+    ).toBe(false); // no id
   });
 });
