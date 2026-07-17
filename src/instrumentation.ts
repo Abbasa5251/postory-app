@@ -1,3 +1,5 @@
+import * as Sentry from "@sentry/nextjs";
+
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     // Importing these runs their production env guards (ADR-011): a prod
@@ -6,5 +8,16 @@ export async function register() {
     // never runs during `next build`, so local builds stay exempt.
     await import("@/server/services/redis/client");
     await import("@/server/services/email/client");
+    // A6: Sentry Node init (errors-only). Merged here, not replacing the
+    // guards above.
+    await import("./sentry.server.config");
+  }
+  if (process.env.NEXT_RUNTIME === "edge") {
+    await import("./sentry.edge.config");
   }
 }
+
+// A6: forward Server-Component / route-handler / proxy errors to Sentry —
+// covers throws that escape outside the action wrapper's own capture path
+// (`withAction`, lands in A6·3).
+export const onRequestError = Sentry.captureRequestError;
