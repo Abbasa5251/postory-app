@@ -28,6 +28,12 @@ export const env = createEnv({
     // are bundler-plugin tooling, not app runtime, so they stay out of this
     // schema and are read directly in next.config.ts.
     SENTRY_DSN: z.url().optional(),
+    // Zernio publishing API key (B3+). One workspace key for all of POSTORY.
+    // Optional in the schema so local/CI builds and the unit suites (which mock
+    // fetch) don't need it; the Zernio service throws at first use when unset
+    // (same lazy pattern as getRedis). Required in production for account
+    // connection / publishing to work.
+    ZERNIO_API_KEY: z.string().min(1).optional(),
   },
   experimental__runtimeEnv: process.env,
   emptyStringAsUndefined: true,
