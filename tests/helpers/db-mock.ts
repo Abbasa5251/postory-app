@@ -86,6 +86,33 @@ export function captureUpdate(
   return record;
 }
 
+/** The captured `db.delete(table).where(cond)` of one delete. */
+export type DeleteCall = { table: unknown; where?: SQL };
+
+/**
+ * delete() mock wired onto `deleteFn`, capturing `.where()`. `.returning()`
+ * resolves to `returningRows` (slots into a `db.batch([...])` array). Empty
+ * `returningRows` models a 0-row delete (row not in the caller's org → NotFound).
+ */
+export function captureDelete(
+  deleteFn: Mock,
+  returningRows: unknown[] = [],
+): DeleteCall {
+  const record: DeleteCall = { table: undefined };
+  deleteFn.mockImplementation((table: unknown) => {
+    record.table = table;
+    const chain = {
+      where(cond: SQL) {
+        record.where = cond;
+        return chain;
+      },
+      returning: () => Promise.resolve(returningRows),
+    };
+    return chain;
+  });
+  return record;
+}
+
 /**
  * batch() mock: `db.batch([...])` resolves each statement (the atomic Case-A
  * template in dal/audit.ts pairs an update's `.returning()` with an audit
@@ -106,7 +133,8 @@ export type InsertCall = { table: unknown; values: unknown };
  * `db.insert(table).values(payload)`. The returned array fills as inserts run.
  * `values()` yields a thenable (so an audit insert can be `await`ed directly)
  * that also exposes `.returning()` resolving to `returningRows` (so a
- * `.returning()` create path gets its row). Both paths share `returningRows`.
+ * `.returning()` create path gets its row) and `.onConflictDoNothing()`
+ * (chainable, for idempotent upserts). All paths share `returningRows`.
  */
 export function captureInserts(
   insertFn: Mock,
@@ -123,8 +151,10 @@ export function captureInserts(
           unknown[]
         > & {
           returning: () => Promise<unknown[]>;
+          onConflictDoNothing: () => typeof thenable;
         };
         thenable.returning = () => Promise.resolve(returningRows);
+        thenable.onConflictDoNothing = () => thenable;
         return thenable;
       },
     };

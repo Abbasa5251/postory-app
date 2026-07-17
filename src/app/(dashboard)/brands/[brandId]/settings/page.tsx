@@ -46,6 +46,12 @@ export default async function BrandSettingsPage({
           ← Brands
         </Link>
         <h1 className="font-heading text-2xl font-semibold">{brand.name}</h1>
+        <Link
+          href={`/brands/${brand.id}/accounts`}
+          className="text-sm text-muted-foreground hover:underline"
+        >
+          Accounts →
+        </Link>
       </div>
 
       <section className="flex flex-col gap-4">
