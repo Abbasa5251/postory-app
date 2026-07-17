@@ -40,7 +40,10 @@ function browserTimeZone(): string {
   }
 }
 
-const TIME_ZONES = [...supportedTimeZones];
+// `Intl.supportedValuesOf` omits the bare "UTC" alias, but browserTimeZone()
+// can produce it (as the fallback, or on a UTC-set machine) — include it so the
+// default is always reselectable after clearing the field.
+const TIME_ZONES = ["UTC", ...supportedTimeZones.filter((tz) => tz !== "UTC")];
 
 /**
  * "New brand" dialog (B1). Name + timezone only — logo/colors/approval land
@@ -73,18 +76,24 @@ export function NewBrandDialog() {
     setMessage(undefined);
     setFieldErrors(undefined);
 
-    const result = await createBrand({ name, timezone });
-    setPending(false);
-
-    if (!result.ok) {
-      // VALIDATION → inline field errors; everything else → a general message.
-      setFieldErrors(result.error.fieldErrors);
-      if (result.error.code !== "VALIDATION") setMessage(result.error.message);
-      return;
+    try {
+      const result = await createBrand({ name, timezone });
+      if (!result.ok) {
+        // VALIDATION → inline field errors; everything else → a general message.
+        setFieldErrors(result.error.fieldErrors);
+        if (result.error.code !== "VALIDATION")
+          setMessage(result.error.message);
+        return;
+      }
+      toast.success(`Brand "${result.data.name}" created`);
+      setOpen(false);
+    } catch {
+      // The action rejected rather than returning (a dev re-throw of an
+      // unexpected error, or a network failure) — show a generic message.
+      setMessage("Something went wrong. Please try again.");
+    } finally {
+      setPending(false);
     }
-
-    toast.success(`Brand "${result.data.name}" created`);
-    setOpen(false);
   }
 
   return (

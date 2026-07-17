@@ -13,12 +13,15 @@ import { listBrands } from "@/server/dal/brands";
 export default async function BrandsPage() {
   const ctx = await getAuthCtx();
   const brands = await listBrands(ctx);
+  // UX only (§7): the "brand:create" authorize gate in the action is the real
+  // enforcement — this just hides a button that would 403 for other roles.
+  const canCreateBrand = ctx.role === "owner" || ctx.role === "admin";
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between gap-4">
         <h1 className="font-heading text-2xl font-semibold">Brands</h1>
-        <NewBrandDialog />
+        {canCreateBrand && <NewBrandDialog />}
       </div>
 
       {brands.length === 0 ? (
