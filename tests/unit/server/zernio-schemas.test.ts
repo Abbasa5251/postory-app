@@ -53,6 +53,25 @@ describe("normalizeAccount", () => {
   });
 
   it("falls back through handle → displayName → name → _id, and picks an avatar", () => {
+    // handle wins over displayName, name, and _id.
+    expect(
+      normalizeAccount({
+        _id: "a1",
+        platform: "x",
+        handle: "H",
+        displayName: "D",
+        name: "N",
+      }).handle,
+    ).toBe("H");
+    // displayName wins over name and _id.
+    expect(
+      normalizeAccount({
+        _id: "a1",
+        platform: "x",
+        displayName: "D",
+        name: "N",
+      }).handle,
+    ).toBe("D");
     expect(
       normalizeAccount({ _id: "a1", platform: "x", name: "Acme" }).handle,
     ).toBe("Acme");
