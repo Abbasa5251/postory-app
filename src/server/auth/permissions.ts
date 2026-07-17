@@ -39,6 +39,18 @@ export const statement = {
 
 export const ac = createAccessControl(statement);
 
+/**
+ * Every `"resource:action"` the app can gate on — the string form the §7 action
+ * template passes to `authorize()`. Derived from `statement` so it always
+ * tracks the single source of role truth (includes the plugin's own
+ * organization/member/invitation/team/ac permissions).
+ */
+export type Permission = {
+  [
+    R in keyof typeof statement
+  ]: `${R & string}:${(typeof statement)[R][number] & string}`;
+}[keyof typeof statement];
+
 // owner / admin: identical app-level grants (§7 matrix rows match); they
 // differ only in the plugin's built-in org statements (ownerAc can delete the
 // org / transfer ownership).

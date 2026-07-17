@@ -11,6 +11,7 @@ Run alone: `npm run test:authz` · runs in the CI merge gate with the unit suite
 | File | Covers |
 |---|---|
 | `role-matrix.test.ts` | The coarse role→permission statements. Every cell of the AGENTS.md §7 table asserted against the spec via `roles.<r>.authorize(...)`. |
+| `authorize.test.ts` | The §7 coarse gate `authorize(ctx, "resource:action")` (A6): allow → returns void, deny → throws `ForbiddenError`, system ctx → bypass. Representative cells only — role-matrix owns the full truth table. |
 | `dal-scoping.test.ts` | Mock-level proof that every exported DAL query renders `org_id = ctx.orgId` (plus brand narrowing, 404-shaped cross-org reads). |
 | `permissions.test.ts` | Role set == UI role set; spot-checks (kept from the A5 seed). |
 | `assignable-roles.test.ts` | `assertAssignableRole` rejects better-auth's built-in `member` (A4). |

@@ -21,6 +21,13 @@ export const env = createEnv({
     // production (Vercel build or server boot) when unset.
     UPSTASH_REDIS_REST_URL: z.url().optional(),
     UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
+    // Sentry error reporting (A6). Optional everywhere — Sentry no-ops without
+    // it; a production server boot only WARNs when it is missing (never
+    // throws), so it can't add a blocker to deploys. The build-time
+    // source-map-upload inputs (SENTRY_AUTH_TOKEN / SENTRY_ORG / SENTRY_PROJECT)
+    // are bundler-plugin tooling, not app runtime, so they stay out of this
+    // schema and are read directly in next.config.ts.
+    SENTRY_DSN: z.url().optional(),
   },
   experimental__runtimeEnv: process.env,
   emptyStringAsUndefined: true,
