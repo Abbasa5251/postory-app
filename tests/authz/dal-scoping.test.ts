@@ -306,14 +306,18 @@ describe("updateBrandContact — sets only client_contact_email, PII-safe audit"
     ).rejects.toThrow(NotFoundError);
   });
 
-  it("rejects a creator's unassigned brand before any update", async () => {
+  it("rejects a creator's unassigned brand before any update (voice + contact)", async () => {
     captureUpdate(update, [{ id: "b9" }]);
     makeBatch(batch);
+    const creator = memberCtx({ role: "creator", brandIds: ["b1"] });
+
     await expect(
-      updateBrandVoice(memberCtx({ role: "creator", brandIds: ["b1"] }), "b9", {
-        tone: "x",
-      }),
+      updateBrandVoice(creator, "b9", { tone: "x" }),
     ).rejects.toThrow(NotFoundError);
+    await expect(updateBrandContact(creator, "b9", "x@y.com")).rejects.toThrow(
+      NotFoundError,
+    );
+
     expect(update).not.toHaveBeenCalled();
   });
 });

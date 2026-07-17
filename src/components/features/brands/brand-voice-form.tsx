@@ -117,6 +117,7 @@ export function BrandVoiceForm({
           {samplePosts.map((post, index) => (
             <div key={index} className="flex items-start gap-2">
               <Textarea
+                aria-label={`Sample post ${index + 1}`}
                 value={post}
                 onChange={(e) =>
                   setSamplePosts((posts) =>
