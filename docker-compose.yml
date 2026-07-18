@@ -1,7 +1,8 @@
-# POSTORY — fully local stack. Replaces the two cloud dependencies with
-# protocol-compatible local containers so the app code runs unchanged:
-#   Neon Postgres  → postgres:18 + local-neon-http-proxy (neon HTTP wire)
-#   Upstash Redis  → redis:7      + serverless-redis-http (Upstash REST wire)
+# POSTORY — fully local stack, no third-party services and no proxies.
+# The app talks directly to a plain Postgres and a plain Redis over their
+# standard wire protocols (pg + ioredis):
+#   Neon Postgres  → postgres:18   (node-postgres, direct TCP)
+#   Upstash Redis  → redis:7        (ioredis, direct TCP)
 #
 # Bring it up:   docker compose up --build
 # Reset data:    docker compose down -v
@@ -11,18 +12,14 @@
 
 name: postory
 
-x-pg-user: &pg-user ${POSTGRES_USER:-postgres}
-x-pg-pass: &pg-pass ${POSTGRES_PASSWORD:-postgres}
-x-pg-db: &pg-db ${POSTGRES_DB:-postory}
-
 services:
   # ---- Postgres (replaces Neon) ----
   postgres:
     image: postgres:18-alpine
     environment:
-      POSTGRES_USER: *pg-user
-      POSTGRES_PASSWORD: *pg-pass
-      POSTGRES_DB: *pg-db
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-postory}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
@@ -34,17 +31,6 @@ services:
       interval: 3s
       timeout: 5s
       retries: 20
-
-  # ---- Neon HTTP proxy: speaks the neon-http wire protocol to Postgres ----
-  neon-proxy:
-    image: ghcr.io/timowilhelm/local-neon-http-proxy:main
-    environment:
-      PG_CONNECTION_STRING: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-postory}
-    ports:
-      - "${NEON_PROXY_PORT:-4444}:4444"
-    depends_on:
-      postgres:
-        condition: service_healthy
 
   # ---- Redis (replaces Upstash) ----
   redis:
@@ -60,21 +46,7 @@ services:
       timeout: 5s
       retries: 20
 
-  # ---- SRH: Upstash-REST-compatible proxy in front of Redis ----
-  srh:
-    image: hiett/serverless-redis-http:0.0.10
-    environment:
-      SRH_MODE: env
-      SRH_TOKEN: ${UPSTASH_REDIS_REST_TOKEN:-local_dev_token}
-      SRH_CONNECTION_STRING: redis://redis:6379
-    ports:
-      - "${SRH_PORT:-8079}:80"
-    depends_on:
-      redis:
-        condition: service_healthy
-
-  # ---- One-shot migration job: drizzle-kit connects DIRECTLY to Postgres
-  #      (wire protocol), not through the neon proxy. ----
+  # ---- One-shot migration job: drizzle-kit connects directly to Postgres. ----
   migrator:
     build:
       context: .
@@ -94,14 +66,9 @@ services:
       target: runner
     environment:
       NODE_ENV: production
-      # neon-http → local proxy (see src/db/db.ts). DATABASE_URL host is the
-      # proxy service name; only its hostname + credentials flow through.
-      USE_LOCAL_NEON_PROXY: "true"
-      NEON_LOCAL_PROXY_PORT: "4444"
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@neon-proxy:5432/${POSTGRES_DB:-postory}
-      # Upstash client → SRH proxy (unchanged @upstash/redis client).
-      UPSTASH_REDIS_REST_URL: http://srh:80
-      UPSTASH_REDIS_REST_TOKEN: ${UPSTASH_REDIS_REST_TOKEN:-local_dev_token}
+      # Direct connections — no proxies.
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-postory}
+      REDIS_URL: redis://redis:6379
       # better-auth. Dev secret — override for anything shared.
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-dev_local_secret_change_me_0123456789abcd}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
@@ -120,10 +87,10 @@ services:
     depends_on:
       migrator:
         condition: service_completed_successfully
-      neon-proxy:
-        condition: service_started
-      srh:
-        condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/"]
       interval: 5s

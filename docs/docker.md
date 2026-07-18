@@ -1,13 +1,18 @@
 # Local Docker stack
 
-A fully self-contained POSTORY environment. It replaces the two cloud
-dependencies with protocol-compatible local containers so **the application
-code runs unchanged**:
+A fully self-contained POSTORY environment with **no third-party services and
+no proxies**. The two cloud dependencies are replaced by plain containers that
+the app talks to directly over their standard wire protocols:
 
-| Cloud service      | Local replacement                                    | How the app still works unchanged                                                                 |
-| ------------------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Neon Postgres      | `postgres:18` + `local-neon-http-proxy`              | The `drizzle-orm/neon-http` driver + `db.batch()` atomicity keep working; the proxy speaks Neon's HTTP wire protocol in front of a plain Postgres. |
-| Upstash Redis      | `redis:7` + `serverless-redis-http` (SRH)            | The `@upstash/redis` client is unchanged; SRH exposes the Upstash REST API (incl. `eval`/`getdel`) in front of a real Redis. |
+| Cloud service | Local replacement | Driver (direct, no proxy)              |
+| ------------- | ----------------- | -------------------------------------- |
+| Neon Postgres | `postgres:18`     | `drizzle-orm/node-postgres` (`pg`)     |
+| Upstash Redis | `redis:7`         | `ioredis`                              |
+
+Both drivers speak the standard wire protocols, so the same code also runs
+against Neon/Upstash (or any Postgres/Redis) in production via their direct
+connection strings — the vendor SDKs (`@neondatabase/serverless`,
+`@upstash/redis`) are gone entirely.
 
 Postgres 18 is required (not 15/16) — domain tables default their PKs with the
 native `uuidv7()`, which ships in Postgres 18.
@@ -19,9 +24,8 @@ docker compose up --build          # build + start the whole stack
 # app  → http://localhost:3000
 ```
 
-The `migrator` service runs `drizzle-kit migrate` once (connecting straight to
-Postgres over the wire protocol, not through the neon proxy) and exits; the
-`app` service starts only after it completes successfully.
+The `migrator` service runs `drizzle-kit migrate` once and exits; the `app`
+service starts only after it completes successfully.
 
 ```bash
 docker compose down                # stop
@@ -32,25 +36,24 @@ docker compose run --rm migrator   # re-run migrations by hand
 
 ## Services
 
-| Service      | Image                                          | Host port | Purpose                                            |
-| ------------ | ---------------------------------------------- | --------- | -------------------------------------------------- |
-| `postgres`   | `postgres:18-alpine`                           | 5432      | Primary datastore                                  |
-| `neon-proxy` | `ghcr.io/timowilhelm/local-neon-http-proxy`    | 4444      | Neon HTTP wire protocol → Postgres                 |
-| `redis`      | `redis:7-alpine`                               | 6379      | Sessions (secondary storage) + rate-limit counters |
-| `srh`        | `hiett/serverless-redis-http:0.0.10`           | 8079      | Upstash REST API → Redis                           |
-| `migrator`   | built (`migrator` target)                      | —         | One-shot `drizzle-kit migrate`, then exits         |
-| `app`        | built (`runner` target)                        | 3000      | Next.js standalone server                          |
+| Service    | Image                | Host port | Purpose                                            |
+| ---------- | -------------------- | --------- | -------------------------------------------------- |
+| `postgres` | `postgres:18-alpine` | 5432      | Primary datastore                                  |
+| `redis`    | `redis:7-alpine`     | 6379      | Sessions (secondary storage) + rate-limit counters |
+| `migrator` | built (`migrator`)   | —         | One-shot `drizzle-kit migrate`, then exits         |
+| `app`      | built (`runner`)     | 3000      | Next.js standalone server                          |
 
 ## How the wiring works
 
-- **DB:** the app sets `USE_LOCAL_NEON_PROXY=true`, so `src/db/db.ts` points
-  `neonConfig.fetchEndpoint` at `http://neon-proxy:4444/sql`. The app's
-  `DATABASE_URL` host (`neon-proxy`) is only used as the fetch-endpoint routing
-  key; the proxy itself connects to Postgres via its own `PG_CONNECTION_STRING`.
-- **Redis:** the app points `UPSTASH_REDIS_REST_URL` at `http://srh:80` with
-  `UPSTASH_REDIS_REST_TOKEN` matching SRH's `SRH_TOKEN`.
-- **Migrations** bypass the proxy: `drizzle-kit` uses a standard Postgres TCP
-  connection, so the `migrator` service's `DATABASE_URL` points directly at
+- **DB:** the app's `DATABASE_URL` points straight at `postgres:5432`.
+  `src/db/db.ts` uses `drizzle-orm/node-postgres`, which opens a normal pooled
+  TCP connection. The mutation+audit atomicity in the DAL uses real
+  `db.transaction()` (see `src/server/dal/audit.ts`).
+- **Redis:** the app's `REDIS_URL` points at `redis://redis:6379`.
+  `src/server/services/redis/client.ts` uses `ioredis`; the better-auth
+  secondary-storage adapter issues `GET`/`SET`/`DEL`/`GETDEL` and the Lua
+  `EVAL` increment directly.
+- **Migrations:** `drizzle-kit` (with the `pg` driver) connects directly to
   `postgres:5432`.
 
 ## Configuration
@@ -58,8 +61,8 @@ docker compose run --rm migrator   # re-run migrations by hand
 Every value defaults to zero-config local dev. Override any of them via a
 sibling `.env` file or shell variables (compose reads `${VAR:-default}`):
 `POSTGRES_USER/PASSWORD/DB`, `APP_PORT`, `POSTGRES_PORT`, `REDIS_PORT`,
-`NEON_PROXY_PORT`, `SRH_PORT`, `BETTER_AUTH_SECRET`, `RESEND_API_KEY`,
-`EMAIL_FROM`, `ZERNIO_API_KEY`, `GOOGLE_CLIENT_ID/SECRET`.
+`BETTER_AUTH_SECRET`, `RESEND_API_KEY`, `EMAIL_FROM`, `ZERNIO_API_KEY`,
+`GOOGLE_CLIENT_ID/SECRET`.
 
 ## Not replaced locally
 

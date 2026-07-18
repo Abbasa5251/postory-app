@@ -160,7 +160,7 @@ describe("recordAuditEvent / buildAuditInsert", () => {
     ).rejects.toThrow("db down");
   });
 
-  it("buildAuditInsert builds the insert without needing an await (batch composition)", () => {
+  it("buildAuditInsert builds the insert without needing an await (transaction composition)", () => {
     buildAuditInsert(memberCtx, {
       action: "post.approve",
       entityType: "post",

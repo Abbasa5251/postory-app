@@ -62,9 +62,9 @@ export type UpdateCall = { table: unknown; set: unknown; where?: SQL };
 
 /**
  * update() mock wired onto `updateFn`, capturing `.set()`/`.where()`.
- * `.returning()` resolves to `returningRows` (a Promise, so it slots into a
- * `db.batch([...])` array — see `makeBatch`). Empty `returningRows` models a
- * 0-row update (row not in the caller's org → NotFound).
+ * `.returning()` resolves to `returningRows` (awaited inside a `db.transaction`
+ * — see `makeTransaction`). Empty `returningRows` models a 0-row update (row
+ * not in the caller's org → NotFound).
  */
 export function captureUpdate(
   updateFn: Mock,
@@ -94,7 +94,7 @@ export type DeleteCall = { table: unknown; where?: SQL };
 
 /**
  * delete() mock wired onto `deleteFn`, capturing `.where()`. `.returning()`
- * resolves to `returningRows` (slots into a `db.batch([...])` array). Empty
+ * resolves to `returningRows` (awaited inside a `db.transaction`). Empty
  * `returningRows` models a 0-row delete (row not in the caller's org → NotFound).
  */
 export function captureDelete(
@@ -117,14 +117,16 @@ export function captureDelete(
 }
 
 /**
- * batch() mock: `db.batch([...])` resolves each statement (the atomic Case-A
- * template in dal/audit.ts pairs an update's `.returning()` with an audit
- * insert). Statements are already thenables here, so awaiting them all mirrors
- * the driver's all-or-nothing resolution.
+ * transaction() mock: `db.transaction(cb)` invokes `cb(tx)` with a tx handle
+ * exposing the same insert/update/delete spies the test wired (via
+ * captureUpdate/captureDelete/captureInserts), so writes issued through `tx`
+ * inside the DAL are captured exactly as before. The callback's promise is
+ * returned verbatim, so a `throw` inside it (0-row → NotFoundError) rejects the
+ * transaction — mirroring the driver's rollback-on-throw.
  */
-export function makeBatch(batchFn: Mock) {
-  batchFn.mockImplementation((statements: unknown[]) =>
-    Promise.all(statements),
+export function makeTransaction(transactionFn: Mock, tx: unknown) {
+  transactionFn.mockImplementation((cb: (tx: unknown) => unknown) =>
+    Promise.resolve(cb(tx)),
   );
 }
 

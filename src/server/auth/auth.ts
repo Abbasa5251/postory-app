@@ -19,7 +19,7 @@ import { db } from "@/db/db";
 import * as authSchema from "@/db/schemas/auth";
 import { env } from "@/lib/env/server";
 import { redisConfigured } from "@/server/services/redis/client";
-import { upstashSecondaryStorage } from "@/server/services/redis/secondary-storage";
+import { redisSecondaryStorage } from "@/server/services/redis/secondary-storage";
 import {
   authRequestEvent,
   sessionCreatedEvent,
@@ -39,7 +39,7 @@ export const auth = betterAuth({
   // ADR-011: Redis-backed session lookups + rate-limit counters. Optional in
   // dev (absent → sessions stay DB-only, as before); the redis client module
   // fails the boot in production when unconfigured.
-  ...(redisConfigured() ? { secondaryStorage: upstashSecondaryStorage() } : {}),
+  ...(redisConfigured() ? { secondaryStorage: redisSecondaryStorage() } : {}),
   session: {
     // Keep Postgres the source of truth even with secondaryStorage: reads hit
     // Redis and fall back to the DB on a miss, so a Redis flush/outage never
