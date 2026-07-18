@@ -3,6 +3,8 @@ import * as z from "zod";
 
 export const env = createEnv({
   server: {
+    // Standard Postgres connection string (postgres://…). Any Postgres — a
+    // local container or a cloud provider's direct connection endpoint.
     DATABASE_URL: z.url(),
     BETTER_AUTH_SECRET: z.string().min(32),
     BETTER_AUTH_URL: z.url(),
@@ -15,12 +17,13 @@ export const env = createEnv({
     // Optional in dev (falls back to the Resend sandbox sender); the email
     // service refuses the sandbox fallback in production.
     EMAIL_FROM: z.string().min(1).optional(),
-    // Upstash Redis (ADR-011: auth rate limits + better-auth secondaryStorage).
-    // Optional in dev and local/CI builds (no secondaryStorage; rate limiting
-    // is production-only by better-auth default); the redis service throws in
+    // Redis connection string (redis://… or rediss://…) — ADR-011: auth rate
+    // limits + better-auth secondaryStorage. A standard Redis endpoint (local
+    // container, or a cloud provider's native TCP endpoint). Optional in dev
+    // and local/CI builds (no secondaryStorage; rate limiting is
+    // production-only by better-auth default); the redis service throws in
     // production (Vercel build or server boot) when unset.
-    UPSTASH_REDIS_REST_URL: z.url().optional(),
-    UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
+    REDIS_URL: z.url().optional(),
     // Sentry error reporting (A6). Optional everywhere — Sentry no-ops without
     // it; a production server boot only WARNs when it is missing (never
     // throws), so it can't add a blocker to deploys. The build-time

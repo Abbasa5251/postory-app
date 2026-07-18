@@ -1,14 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  upstashSecondaryStorage,
+  redisSecondaryStorage,
   type RedisLike,
 } from "@/server/services/redis/secondary-storage";
 
 /**
- * In-memory stand-in for the Upstash REST client, mirroring documented Redis
- * semantics: SET with EX, GETDEL, DEL, and — for the adapter's Lua increment
- * script — INCR-creates-at-1 with EXPIRE applied only on creation. Expiry is
- * simulated against Date.now() (driven by vi.useFakeTimers below).
+ * In-memory stand-in for the ioredis client, mirroring documented Redis
+ * semantics with ioredis command shapes: SET with the ("EX", ttl) positional
+ * form, GETDEL, DEL, and — for the adapter's Lua increment script — the
+ * eval(script, numKeys, ...keysThenArgs) form: INCR-creates-at-1 with EXPIRE
+ * applied only on creation. Expiry is simulated against Date.now() (driven by
+ * vi.useFakeTimers below).
  */
 class FakeRedis {
   store = new Map<string, { value: string; expiresAt: number | null }>();
@@ -27,10 +29,10 @@ class FakeRedis {
     return this.live(key)?.value ?? null;
   }
 
-  async set(key: string, value: unknown, opts?: { ex?: number }) {
+  async set(key: string, value: unknown, mode?: "EX", ttl?: number) {
     this.store.set(key, {
       value: String(value),
-      expiresAt: opts?.ex !== undefined ? Date.now() + opts.ex * 1000 : null,
+      expiresAt: mode === "EX" && ttl !== undefined ? Date.now() + ttl * 1000 : null,
     });
     return "OK";
   }
@@ -47,9 +49,8 @@ class FakeRedis {
     return value;
   }
 
-  async eval(_script: string, keys: string[], args: unknown[]) {
-    const key = keys[0]!;
-    const ttlSeconds = Number(args[0]);
+  async eval(_script: string, _numKeys: number, key: string, ttl: string | number) {
+    const ttlSeconds = Number(ttl);
     const entry = this.live(key);
     if (!entry) {
       this.store.set(key, {
@@ -66,17 +67,17 @@ class FakeRedis {
 }
 
 // Test double: structurally compatible with the five methods the adapter
-// uses; the full Upstash generic signatures don't matter here.
+// uses; the full ioredis generic signatures don't matter here.
 const asRedisLike = (fake: FakeRedis) => fake as unknown as RedisLike;
 
-describe("upstashSecondaryStorage", () => {
+describe("redisSecondaryStorage", () => {
   let fake: FakeRedis;
-  let storage: ReturnType<typeof upstashSecondaryStorage>;
+  let storage: ReturnType<typeof redisSecondaryStorage>;
 
   beforeEach(() => {
     vi.useFakeTimers();
     fake = new FakeRedis();
-    storage = upstashSecondaryStorage(asRedisLike(fake));
+    storage = redisSecondaryStorage(asRedisLike(fake));
   });
 
   afterEach(() => {
@@ -167,10 +168,12 @@ describe("upstashSecondaryStorage", () => {
   it("passes the ttl through to the atomic script call", async () => {
     const evalSpy = vi.spyOn(fake, "eval");
     await storage.increment("rl", 900);
+    // ioredis eval: (script, numKeys, ...keysThenArgs).
     expect(evalSpy).toHaveBeenCalledWith(
       expect.stringContaining("INCR"),
-      ["ba:rl"],
-      [900],
+      1,
+      "ba:rl",
+      900,
     );
   });
 });

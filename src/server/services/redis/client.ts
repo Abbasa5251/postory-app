@@ -3,12 +3,12 @@
 // secondaryStorage at construction), which the better-auth CLI loads for
 // schema generation and which rejects 'server-only'. Nothing here runs I/O
 // at module load: the client is constructed lazily on first use.
-import { Redis } from "@upstash/redis";
+import { Redis } from "ioredis";
 import { env } from "@/lib/env/server";
 import { shouldEnforceProductionEnv } from "@/lib/env/runtime";
 
 export function redisConfigured(): boolean {
-  return Boolean(env.UPSTASH_REDIS_REST_URL && env.UPSTASH_REDIS_REST_TOKEN);
+  return Boolean(env.REDIS_URL);
 }
 
 // ADR-011: production must have Redis — auth rate limiting and session
@@ -18,7 +18,7 @@ export function redisConfigured(): boolean {
 // but not on local/CI `next build`, which runs without deploy secrets.
 if (shouldEnforceProductionEnv() && !redisConfigured()) {
   throw new Error(
-    "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set in production (ADR-011 auth hardening: rate limits + session secondary storage).",
+    "REDIS_URL must be set in production (ADR-011 auth hardening: rate limits + session secondary storage).",
   );
 }
 
@@ -27,18 +27,14 @@ let client: Redis | null = null;
 export function getRedis(): Redis {
   if (!client) {
     if (!redisConfigured()) {
-      throw new Error(
-        "Upstash Redis is not configured (UPSTASH_REDIS_REST_URL/TOKEN missing).",
-      );
+      throw new Error("Redis is not configured (REDIS_URL missing).");
     }
-    client = new Redis({
-      // Non-null asserted: redisConfigured() above guarantees both values.
-      url: env.UPSTASH_REDIS_REST_URL!,
-      token: env.UPSTASH_REDIS_REST_TOKEN!,
-      // better-auth's SecondaryStorage contract passes and expects raw
-      // strings (it JSON-serializes sessions itself); the SDK's automatic
-      // JSON deserialization would hand back objects instead.
-      automaticDeserialization: false,
+    // Standard Redis wire protocol (ioredis) — no vendor SDK, no HTTP proxy.
+    // Connects lazily (lazyConnect) so importing this module never opens a
+    // socket; the first command triggers the connection.
+    client = new Redis(env.REDIS_URL!, {
+      lazyConnect: true,
+      maxRetriesPerRequest: 3,
     });
   }
   return client;

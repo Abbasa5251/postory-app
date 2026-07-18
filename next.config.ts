@@ -4,6 +4,11 @@ import { withSentryConfig } from "@sentry/nextjs";
 const nextConfig: NextConfig = {
   /* config options here */
   reactCompiler: true,
+  // Emit a self-contained server bundle (.next/standalone) so the Docker
+  // runtime image ships only the traced node_modules instead of the full
+  // dependency tree. Only consumed by the container build; local `next
+  // start` is unaffected.
+  output: "standalone",
 };
 
 // A6 — Sentry bundler plugin (source-map upload + release tagging). The org /

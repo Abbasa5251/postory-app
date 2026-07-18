@@ -14,8 +14,8 @@ import {
   captureDelete,
   captureInserts,
   captureUpdate,
-  makeBatch,
   makeSelectChain,
+  makeTransaction,
   renderedSql,
   renderedWhere,
 } from "../helpers/db-mock";
@@ -27,16 +27,20 @@ import {
  * brands). Adding a method here is the tests/authz/README.md checklist.
  */
 
-const { select, insert, update, batch, del } = vi.hoisted(() => ({
+const { select, insert, update, transaction, del } = vi.hoisted(() => ({
   select: vi.fn(),
   insert: vi.fn(),
   update: vi.fn(),
-  batch: vi.fn(),
+  transaction: vi.fn(),
   del: vi.fn(),
 }));
 vi.mock("@/db/db", () => ({
-  db: { select, insert, update, batch, delete: del },
+  db: { select, insert, update, transaction, delete: del },
 }));
+
+// tx handle the DAL's db.transaction(cb) receives — same spies, so writes
+// issued through `tx` are captured by captureUpdate/captureDelete/captureInserts.
+const tx = { insert, update, delete: del };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -145,8 +149,8 @@ describe("accounts DAL — org scoping is structurally present", () => {
 describe("syncSocialAccount — org scoping is structurally present", () => {
   it("updates by (org_id = ctx.orgId, zernio_account_id) and audits", async () => {
     const upd = captureUpdate(update, [{ id: "sa_1" }]);
-    captureInserts(insert); // audit insert inside the batch
-    makeBatch(batch);
+    captureInserts(insert); // audit insert inside the transaction
+    makeTransaction(transaction, tx);
     const changed = await syncSocialAccount(adminCtx, "brand_1", {
       zernioAccountId: "za_1",
       handle: "@acme",
@@ -185,7 +189,7 @@ describe("getSocialAccountById / deleteSocialAccountById — scoping (#31)", () 
   it("deleteSocialAccountById deletes by (org_id, brand_id, id) and audits disconnect", async () => {
     const delCall = captureDelete(del, [{ id: "sa_1" }]);
     const inserts = captureInserts(insert);
-    makeBatch(batch);
+    makeTransaction(transaction, tx);
     await deleteSocialAccountById(adminCtx, "brand_1", "sa_1");
     const { sql, params } = renderedSql(delCall.where!);
     expect(sql).toContain("org_id");
@@ -203,7 +207,7 @@ describe("getSocialAccountById / deleteSocialAccountById — scoping (#31)", () 
   it("deleteSocialAccountById 404s on a 0-row delete (raced/cross-org)", async () => {
     captureDelete(del, []);
     captureInserts(insert);
-    makeBatch(batch);
+    makeTransaction(transaction, tx);
     await expect(
       deleteSocialAccountById(adminCtx, "brand_1", "sa_x"),
     ).rejects.toBeInstanceOf(NotFoundError);
@@ -246,7 +250,7 @@ describe("accounts DAL — brand access is enforced for creators", () => {
   it("syncSocialAccount 404s on an unassigned brand", async () => {
     captureUpdate(update, [{ id: "sa_1" }]);
     captureInserts(insert);
-    makeBatch(batch);
+    makeTransaction(transaction, tx);
     await expect(
       syncSocialAccount(creatorCtx, "brand_2", {
         zernioAccountId: "za_1",
@@ -260,7 +264,7 @@ describe("accounts DAL — brand access is enforced for creators", () => {
   it("deleteSocialAccountById 404s on an unassigned brand", async () => {
     captureDelete(del, [{ id: "sa_1" }]);
     captureInserts(insert);
-    makeBatch(batch);
+    makeTransaction(transaction, tx);
     await expect(
       deleteSocialAccountById(creatorCtx, "brand_2", "sa_1"),
     ).rejects.toBeInstanceOf(NotFoundError);

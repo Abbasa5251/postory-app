@@ -1,6 +1,5 @@
 // NOTE: no `import 'server-only'` — same CLI constraint as ./client.ts (this
 // module is in auth.ts's static import graph).
-import type { Redis } from "@upstash/redis";
 import type { BetterAuthOptions } from "better-auth/types";
 import { getRedis } from "./client";
 
@@ -9,8 +8,20 @@ import { getRedis } from "./client";
 // @better-auth/core/db, a transitive dep we deliberately don't import from).
 type SecondaryStorage = NonNullable<BetterAuthOptions["secondaryStorage"]>;
 
-// Minimal client surface, injectable for unit tests.
-export type RedisLike = Pick<Redis, "get" | "set" | "del" | "getdel" | "eval">;
+// Minimal client surface, injectable for unit tests. A structural subset of
+// ioredis's `Redis` — the five commands the adapter uses.
+export type RedisLike = {
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string): Promise<unknown>;
+  set(key: string, value: string, mode: "EX", ttl: number): Promise<unknown>;
+  del(key: string): Promise<number>;
+  getdel(key: string): Promise<string | null>;
+  eval(
+    script: string,
+    numKeys: number,
+    ...args: (string | number)[]
+  ): Promise<unknown>;
+};
 
 // Uniform namespace for everything better-auth stores through this adapter
 // (sessions, active-session lists, rate-limit counters).
@@ -25,8 +36,11 @@ const INCREMENT_SCRIPT = `local v = redis.call('INCR', KEYS[1])
 if v == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
 return v`;
 
-export function upstashSecondaryStorage(
-  redis: RedisLike = getRedis(),
+export function redisSecondaryStorage(
+  // ioredis's Redis structurally satisfies the five commands in RedisLike, but
+  // its heavily-overloaded method types don't assign cleanly — cast at this
+  // single seam rather than widening RedisLike.
+  redis: RedisLike = getRedis() as unknown as RedisLike,
 ): SecondaryStorage {
   return {
     // Fail open to a miss: sessions also live in Postgres
@@ -35,25 +49,26 @@ export function upstashSecondaryStorage(
     // instead of turning every authenticated request into a 500.
     get: async (key) => {
       try {
-        return await redis.get<string>(PREFIX + key);
+        return await redis.get(PREFIX + key);
       } catch (error) {
         console.error("[redis] get failed; treating as miss", error);
         return null;
       }
     },
-    getAndDelete: async (key) => redis.getdel<string>(PREFIX + key),
+    getAndDelete: async (key) => redis.getdel(PREFIX + key),
     // Errors propagate: rate limiting must fail CLOSED (better a 500 on the
     // auth endpoint during a Redis outage than an unmetered brute-force
-    // window).
+    // window). ioredis eval: (script, numKeys, ...keysThenArgs) → the Lua
+    // `return v` (a number) comes back as a JS number.
     increment: async (key, ttl) =>
-      redis.eval<[number], number>(INCREMENT_SCRIPT, [PREFIX + key], [ttl]),
+      redis.eval(INCREMENT_SCRIPT, 1, PREFIX + key, ttl) as Promise<number>,
     // Fail open like `get`: set is session write-back — Postgres is the
     // source of truth (session.storeSessionInDatabase) and reads fall back
     // to the DB, so a failed Redis write must not turn sign-in into a 500.
     set: async (key, value, ttl) => {
       try {
         if (ttl !== undefined) {
-          await redis.set(PREFIX + key, value, { ex: ttl });
+          await redis.set(PREFIX + key, value, "EX", ttl);
         } else {
           await redis.set(PREFIX + key, value);
         }
