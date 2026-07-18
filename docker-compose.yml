@@ -1,0 +1,126 @@
+# POSTORY self-hosted deployment (single host, single app replica).
+#
+# Topology (decisions in docs/adr / the deployment plan):
+#   - Postgres: MANAGED (Neon / managed PG) — no postgres service here.
+#     DATABASE_URL points at it (keep ?sslmode=require).
+#   - Redis: self-hosted redis:7 fronted by SRH, which speaks the Upstash REST
+#     API the app's @upstash/redis client expects (zero app code change).
+#   - migrate: one-shot; the app waits on its clean exit before starting.
+#   - caddy: the only service that publishes ports (TLS termination).
+#
+# Interpolated vars (REDIS_PASSWORD, SRH_TOKEN, APP_DOMAIN) come from the
+# --env-file passed to `docker compose` (see deploy.env.example). App/migrate
+# runtime secrets come from env_file: .env.production (never baked into images).
+#
+# Deploy flow:
+#   docker compose --env-file deploy.env build
+#   docker compose --env-file deploy.env up -d        # migrate runs, then app, then caddy
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    volumes:
+      - redis-data:/data
+    networks:
+      - internal
+    healthcheck:
+      # -a auths with the password; PING must return PONG.
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  srh:
+    # serverless-redis-http: exposes the Upstash REST API over a real Redis.
+    image: hiett/serverless-redis-http:latest
+    restart: unless-stopped
+    environment:
+      SRH_MODE: env
+      SRH_TOKEN: ${SRH_TOKEN:?SRH_TOKEN is required}
+      SRH_CONNECTION_STRING: redis://:${REDIS_PASSWORD}@redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+    # No published ports — only the app (same network) talks to it.
+
+  migrate:
+    build:
+      context: .
+      target: migrate
+    # One-shot: run to completion, do not restart (a migrator must not loop).
+    restart: "no"
+    env_file:
+      - .env.production
+    networks:
+      - internal
+
+  app:
+    build:
+      context: .
+      target: runner
+    restart: unless-stopped
+    env_file:
+      # Must include DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL, APP_URL,
+      # EMAIL_FROM, RESEND_API_KEY, and the SRH-backed Redis pair:
+      #   UPSTASH_REDIS_REST_URL=http://srh:80
+      #   UPSTASH_REDIS_REST_TOKEN=<same value as SRH_TOKEN>
+      # (the ADR-011 boot guard hard-requires the UPSTASH_* pair + EMAIL_FROM).
+      - .env.production
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      srh:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+    # Next.js SIGTERM drain + after() callbacks.
+    stop_grace_period: 30s
+    healthcheck:
+      # Node 22 has global fetch. Any non-5xx (incl. auth redirects) is healthy.
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://localhost:3000/').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_started
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN is required}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  redis-data:
+  caddy-data:
+  caddy-config:

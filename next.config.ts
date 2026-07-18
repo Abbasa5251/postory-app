@@ -2,7 +2,11 @@ import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Self-hosted Docker deployment: emit a minimal standalone server bundle
+  // (.next/standalone/server.js) so the runtime image needs no node_modules
+  // install and no `next start`. The Dockerfile must still copy .next/static
+  // and public/ — standalone traces neither.
+  output: "standalone",
   reactCompiler: true,
 };
 

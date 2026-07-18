@@ -1,0 +1,10 @@
+# Caddy reverse proxy for POSTORY. Automatic HTTPS (Let's Encrypt) for the
+# configured domain; proxies to the app's standalone server on the internal
+# network. APP_DOMAIN is injected via compose environment.
+#
+# For local/staging without a public domain + cert, override with:
+#   :80 { reverse_proxy app:3000 }
+{$APP_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:3000
+}

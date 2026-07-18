@@ -1,0 +1,40 @@
+# Rebuilt / reinstalled inside the image
+node_modules
+.next
+out
+build
+
+# Secrets — provided at runtime via compose env_file / environment, never baked
+.env
+.env.*
+!.env.example
+
+# VCS + local tooling
+.git
+.github
+.vscode
+.claude
+.agents
+
+# Tests, reports, coverage (not needed to build or run the server)
+tests
+test-results
+playwright-report
+blob-report
+playwright/.cache
+coverage
+
+# Docker + compose (not part of the app build context)
+Dockerfile
+.dockerignore
+docker-compose*.yml
+compose*.yml
+
+# Docs and misc
+docs
+README.md
+*.md
+!package.json
+*.tsbuildinfo
+.DS_Store
+npm-debug.log*
