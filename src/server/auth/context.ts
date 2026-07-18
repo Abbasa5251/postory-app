@@ -1,6 +1,7 @@
 import "server-only";
 import { headers } from "next/headers";
-import type { Role } from "@/lib/auth/roles";
+import { isValidRole } from "@/lib/auth/roles";
+import { resolveCreatorBrandIds } from "@/server/dal/brand-members";
 import type { MemberCtx, SystemCtx } from "@/server/dal/types";
 import { auth } from "./auth";
 
@@ -30,14 +31,29 @@ export async function getAuthCtx(): Promise<MemberCtx> {
   if (!member) {
     throw new UnauthorizedError("Not a member of the active organization");
   }
+  const role = member.role;
+  // Fail closed (§7): every member-write path validates the role
+  // (assertAssignableRole in the org hooks), so an unrecognized role at this
+  // trust boundary is an anomaly — refuse to mint a security context rather than
+  // cast it blindly into the creator brand-scoping decision below.
+  if (!isValidRole(role)) {
+    throw new UnauthorizedError("Member has an unrecognized role");
+  }
   return {
     orgId: session.session.activeOrganizationId,
     memberId: member.id,
-    role: member.role as Role,
-    // B5: resolve creator brand access from brand_members (the table exists
-    // since A5, but nothing populates it yet); until then every role sees
-    // all brands.
-    brandIds: "all",
+    role,
+    // AGENTS.md §6.5: only a creator is brand-scoped — resolved FRESH per
+    // request from brand_members (assigned none → sees nothing). owner/admin/
+    // approver see every brand, so they short-circuit to "all" and never hit
+    // the resolver (the brand_members row is inert for them, B5.1).
+    brandIds:
+      role === "creator"
+        ? await resolveCreatorBrandIds(
+            session.session.activeOrganizationId,
+            member.id,
+          )
+        : "all",
   };
 }
 

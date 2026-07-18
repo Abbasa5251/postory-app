@@ -5,8 +5,9 @@ import { memberCtx } from "../../helpers/ctx";
 
 // getAuthCtx is the one boundary we stub (the session); authorize, zod, and the
 // error mapping all run for real. A partial mock keeps UnauthorizedError real so
-// `instanceof` in the wrapper matches. next/headers + the better-auth instance
-// are stubbed to keep context.ts's import graph light (mirrors context.test.ts).
+// `instanceof` in the wrapper matches. next/headers, the better-auth instance,
+// and the creator-brand resolver (B5.2, which pulls in @/db/db) are stubbed to
+// keep context.ts's import graph light (mirrors context.test.ts).
 const { getAuthCtx } = vi.hoisted(() => ({ getAuthCtx: vi.fn() }));
 const { captureError, log } = vi.hoisted(() => ({
   captureError: vi.fn(),
@@ -15,6 +16,9 @@ const { captureError, log } = vi.hoisted(() => ({
 
 vi.mock("next/headers", () => ({ headers: vi.fn() }));
 vi.mock("@/server/auth/auth", () => ({ auth: { api: {} } }));
+vi.mock("@/server/dal/brand-members", () => ({
+  resolveCreatorBrandIds: vi.fn(),
+}));
 vi.mock("@/server/auth/context", async (orig) => ({
   ...(await orig<typeof import("@/server/auth/context")>()),
   getAuthCtx,
