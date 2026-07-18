@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -10,10 +9,10 @@ import { BrandVoiceForm } from "@/components/features/brands/brand-voice-form";
 import { EditBrandForm } from "@/components/features/brands/edit-brand-form";
 import { Separator } from "@/components/ui/separator";
 import { type VoiceProfile, voiceProfileSchema } from "@/lib/validation/brands";
-import { auth } from "@/server/auth/auth";
 import { getAuthCtx } from "@/server/auth/context";
 import { listBrandMemberIds } from "@/server/dal/brand-members";
 import { getBrandById } from "@/server/dal/brands";
+import { listOrgMembers } from "@/server/dal/org";
 import { NotFoundError } from "@/server/domain/errors";
 
 // Thin route (§5): scoped DAL read + render. `params` is a Promise in Next 16.
@@ -39,22 +38,22 @@ export default async function BrandSettingsPage({
   const canEdit = ctx.role === "owner" || ctx.role === "admin";
 
   // Brand Assignment (B5) is owner/admin only, so only fetch the roster then.
-  // listMembers defaults to the active org and self-verifies membership; an
-  // agency has ≤10 seats (D1) so the default page of members is the whole team.
+  // Both reads are org-scoped by ctx (§6); an agency has ≤10 seats (D1), so the
+  // whole team is one read.
   let access: {
     members: AccessMember[];
     assignedMemberIds: string[];
   } | null = null;
   if (canEdit) {
-    const [memberList, assignedMemberIds] = await Promise.all([
-      auth.api.listMembers({ headers: await headers() }),
+    const [members, assignedMemberIds] = await Promise.all([
+      listOrgMembers(ctx),
       listBrandMemberIds(ctx, brand.id),
     ]);
     access = {
-      members: memberList.members.map((m) => ({
+      members: members.map((m) => ({
         id: m.id,
-        name: m.user.name,
-        email: m.user.email,
+        name: m.name,
+        email: m.email,
         role: m.role,
       })),
       assignedMemberIds,

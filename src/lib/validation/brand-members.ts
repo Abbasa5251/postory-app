@@ -10,7 +10,10 @@ import * as z from "zod";
  * proven to belong to the caller's org before any row is written.
  */
 export const assignMemberSchema = z.object({
-  brandId: z.string().min(1, "Brand id is required."),
+  // Brand ids are uuidv7 — reject malformed ids at the boundary, before the
+  // action's scoped fetch (§7/§9). memberId is a better-auth id (opaque text,
+  // not a uuid), so it only gets a non-empty check.
+  brandId: z.uuid("Brand id is required."),
   memberId: z.string().min(1, "Member id is required."),
 });
 

@@ -11,6 +11,7 @@ import type { SQL } from "drizzle-orm";
 
 export type SelectChain = {
   from: Mock;
+  innerJoin: Mock;
   where: Mock;
   orderBy: Mock;
   limit: Mock;
@@ -28,6 +29,7 @@ const dialect = new PgDialect();
 export function makeSelectChain(selectFn: Mock, rows: unknown[]): SelectChain {
   const chain = {
     from: vi.fn(),
+    innerJoin: vi.fn(),
     where: vi.fn(),
     orderBy: vi.fn(),
     limit: vi.fn(),
@@ -36,6 +38,7 @@ export function makeSelectChain(selectFn: Mock, rows: unknown[]): SelectChain {
       Promise.resolve(rows).then(onFulfilled, onRejected as never),
   } as unknown as SelectChain;
   chain.from.mockReturnValue(chain);
+  chain.innerJoin.mockReturnValue(chain);
   chain.where.mockReturnValue(chain);
   chain.orderBy.mockResolvedValue(rows);
   chain.limit.mockResolvedValue(rows);
