@@ -1,6 +1,6 @@
 import "server-only";
 import { headers } from "next/headers";
-import type { Role } from "@/lib/auth/roles";
+import { isValidRole } from "@/lib/auth/roles";
 import { resolveCreatorBrandIds } from "@/server/dal/brand-members";
 import type { MemberCtx, SystemCtx } from "@/server/dal/types";
 import { auth } from "./auth";
@@ -31,7 +31,14 @@ export async function getAuthCtx(): Promise<MemberCtx> {
   if (!member) {
     throw new UnauthorizedError("Not a member of the active organization");
   }
-  const role = member.role as Role;
+  const role = member.role;
+  // Fail closed (§7): every member-write path validates the role
+  // (assertAssignableRole in the org hooks), so an unrecognized role at this
+  // trust boundary is an anomaly — refuse to mint a security context rather than
+  // cast it blindly into the creator brand-scoping decision below.
+  if (!isValidRole(role)) {
+    throw new UnauthorizedError("Member has an unrecognized role");
+  }
   return {
     orgId: session.session.activeOrganizationId,
     memberId: member.id,

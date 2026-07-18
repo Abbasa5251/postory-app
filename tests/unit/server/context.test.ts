@@ -108,4 +108,16 @@ describe("getAuthCtx — creator brand-scope resolution (B5.2)", () => {
     await expect(getAuthCtx()).rejects.toThrow(UnauthorizedError);
     expect(resolveCreatorBrandIds).not.toHaveBeenCalled();
   });
+
+  it("fails closed on an unrecognized member role (never mints a ctx, never resolves)", async () => {
+    getSession.mockResolvedValue({
+      session: { activeOrganizationId: "org_1" },
+    });
+    // better-auth's default "member" role (or any non-app value) must not be
+    // cast blindly into the security context.
+    getActiveMember.mockResolvedValue({ id: "member_1", role: "member" });
+
+    await expect(getAuthCtx()).rejects.toThrow(UnauthorizedError);
+    expect(resolveCreatorBrandIds).not.toHaveBeenCalled();
+  });
 });
