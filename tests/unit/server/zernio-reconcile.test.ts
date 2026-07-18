@@ -139,8 +139,9 @@ describe("reconcile — health mode", () => {
       { zernioAccountId: "ig1", status: "connected" },
       { zernioAccountId: "fb1", status: "connected" },
     ]);
-    // Health reports ig1 unpostable; fb1 absent from the response.
-    getAccountsHealth.mockResolvedValue([{ _id: "ig1", canPost: false }]);
+    // Health reports ig1 unpostable; fb1 absent from the response. Entries are
+    // keyed by `accountId` (the health payload's field, = the list's `_id`).
+    getAccountsHealth.mockResolvedValue([{ accountId: "ig1", canPost: false }]);
 
     await reconcileBrandAccounts(ctx, "brand_1", { mode: "health" });
 

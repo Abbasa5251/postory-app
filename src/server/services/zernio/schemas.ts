@@ -15,10 +15,10 @@ import * as z from "zod";
  * + optional fields mean an unexpected-but-present field never throws; a
  * genuinely missing required field (`_id`, `platform`) still fails loudly.
  *
- * ⚠️ VERIFY (§3): the `/accounts/health` path + shape below remain best-effort
- * (the spec instead exposes `isActive`/`needsReconnection` on the list item and
- * a `status` query filter — a follow-up should move status off the guessed
- * health endpoint onto those confirmed fields).
+ * `/accounts/health` is likewise CONFIRMED against the same spec
+ * (`getAllAccountsHealth`): `{ summary, accounts: [{ accountId, status,
+ * canPost, needsReconnect, … }] }` — each entry keyed by `accountId` (NOT the
+ * list's `_id`), with `needsReconnect` as the definitive re-auth signal.
  */
 
 /** GET /v1/connect/{platform} → { authUrl } */
@@ -75,17 +75,18 @@ export function normalizeAccount(raw: ZernioAccountRaw): NormalizedAccount {
 }
 
 /**
- * Account-health entry. ⚠️ VERIFY (§3): the health response shape is not in the
- * docs. Modeled as one entry per account keyed by `_id` with an optional
- * posting-capability signal; parsed defensively so the real shape (once known)
- * needs only this schema adjusted, not the callers. Accepts either a boolean
- * `canPost` or a string `status`.
+ * Account-health entry from `GET /v1/accounts/health` (spec v1.0.4). Keyed by
+ * `accountId` — the SAME account identity the accounts list exposes as `_id`,
+ * just named differently in the health payload. `status` kept a lenient string
+ * (spec enum healthy/warning/error) so an added value can't fail the parse and
+ * silently disable the whole health refresh.
  */
 export const accountHealthEntrySchema = z
   .object({
-    _id: z.string().min(1),
-    canPost: z.boolean().optional(),
+    accountId: z.string().min(1),
     status: z.string().optional(),
+    canPost: z.boolean().optional(),
+    needsReconnect: z.boolean().optional(),
   })
   .passthrough();
 
@@ -106,17 +107,16 @@ export type AccountStatus = "connected" | "needs_reauth";
  * "needs_reauth" would nag the user to reconnect a working account).
  */
 export function healthToStatus(entry: AccountHealthEntry): AccountStatus {
-  // Conservative: `connected` requires a POSITIVE health signal; anything
-  // unknown/absent/negative is `needs_reauth`. A false "reconnect" nag is
-  // recoverable in one click, whereas a false "connected" becomes a silent
-  // publish failure. ⚠️ VERIFY (§3): retune the positive-signal set once the
-  // real health response shape is confirmed. (A shape mismatch fails the zod
-  // parse upstream, so reconcile preserves existing statuses rather than
-  // flipping everything to needs_reauth.)
+  // `needsReconnect` is Zernio's definitive re-auth signal — trust it first.
+  if (entry.needsReconnect === true) return "needs_reauth";
+  // Otherwise stay conservative: `connected` requires a POSITIVE signal;
+  // anything unknown/absent/negative is `needs_reauth`. A false "reconnect" nag
+  // is recoverable in one click, whereas a false "connected" becomes a silent
+  // publish failure.
   if (entry.canPost === true) return "connected";
   if (
     entry.status &&
-    ["active", "connected", "ok", "healthy"].includes(
+    ["healthy", "active", "connected", "ok"].includes(
       entry.status.toLowerCase(),
     )
   ) {

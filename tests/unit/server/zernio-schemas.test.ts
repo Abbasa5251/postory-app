@@ -94,27 +94,40 @@ describe("normalizeAccount", () => {
 });
 
 describe("healthToStatus", () => {
+  it("trusts needsReconnect=true as the definitive needs_reauth signal", () => {
+    // Even with an otherwise-positive signal, needsReconnect wins.
+    expect(
+      healthToStatus({ accountId: "a1", needsReconnect: true, canPost: true }),
+    ).toBe("needs_reauth");
+  });
+
   it("maps a not-postable account to needs_reauth", () => {
-    expect(healthToStatus({ _id: "a1", canPost: false })).toBe("needs_reauth");
-  });
-
-  it("maps a disconnected/expired status string to needs_reauth", () => {
-    expect(healthToStatus({ _id: "a1", status: "disconnected" })).toBe(
-      "needs_reauth",
-    );
-    expect(healthToStatus({ _id: "a1", status: "EXPIRED" })).toBe(
+    expect(healthToStatus({ accountId: "a1", canPost: false })).toBe(
       "needs_reauth",
     );
   });
 
-  it("classifies only a positive signal as connected", () => {
-    expect(healthToStatus({ _id: "a1", canPost: true })).toBe("connected");
-    expect(healthToStatus({ _id: "a1", status: "active" })).toBe("connected");
+  it("maps an error/warning status string to needs_reauth", () => {
+    expect(healthToStatus({ accountId: "a1", status: "error" })).toBe(
+      "needs_reauth",
+    );
+    expect(healthToStatus({ accountId: "a1", status: "WARNING" })).toBe(
+      "needs_reauth",
+    );
+  });
+
+  it("classifies a positive signal as connected", () => {
+    expect(healthToStatus({ accountId: "a1", canPost: true })).toBe(
+      "connected",
+    );
+    expect(healthToStatus({ accountId: "a1", status: "healthy" })).toBe(
+      "connected",
+    );
   });
 
   it("treats unknown/absent signals as needs_reauth (conservative)", () => {
-    expect(healthToStatus({ _id: "a1" })).toBe("needs_reauth");
-    expect(healthToStatus({ _id: "a1", status: "mystery" })).toBe(
+    expect(healthToStatus({ accountId: "a1" })).toBe("needs_reauth");
+    expect(healthToStatus({ accountId: "a1", status: "mystery" })).toBe(
       "needs_reauth",
     );
   });

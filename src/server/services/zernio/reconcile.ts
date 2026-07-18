@@ -54,7 +54,9 @@ export async function reconcileBrandAccounts(
   if (opts.mode === "health") {
     try {
       for (const entry of await getAccountsHealth(profile.zernioProfileId)) {
-        statusByZid.set(entry._id, healthToStatus(entry));
+        // Health entries are keyed by `accountId`, which equals the accounts
+        // list's `_id` (= our `zernioAccountId`) — so the lookup below matches.
+        statusByZid.set(entry.accountId, healthToStatus(entry));
       }
     } catch (error) {
       // Health is best-effort: an outage must not fail the whole refresh or
