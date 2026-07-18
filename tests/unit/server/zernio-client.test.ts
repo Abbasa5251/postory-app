@@ -85,8 +85,13 @@ describe("listAccounts", () => {
       jsonResponse({
         accounts: [
           { _id: "a1", platform: "instagram", username: "@acme" },
-          { _id: "a2", platform: "tiktok", picture: "http://img" },
+          {
+            _id: "a2",
+            platform: "tiktok",
+            profilePicture: "http://img",
+          },
         ],
+        hasAnalyticsAccess: false,
       }),
     );
     const accounts = await listAccounts("zp_1");

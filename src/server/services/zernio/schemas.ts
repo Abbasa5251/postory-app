@@ -6,15 +6,19 @@ import * as z from "zod";
  * parsed at the boundary, never trusted). This module is the ONLY place that
  * knows Zernio's wire shapes.
  *
- * ⚠️ VERIFY (§3): the docs expose some field names but not all. Confirmed from
- * docs.zernio.com examples: connect returns `authUrl`; profile create returns
- * `{ profile: { _id, name, description } }`; accounts list returns
- * `{ accounts: [{ _id, platform, … }] }` (Zernio ids are `_id`). NOT shown in
- * the docs and therefore parsed DEFENSIVELY below (confirm against the live API
- * / OpenAPI before B3 ships): the account handle/username/avatar field names,
- * and the entire account-health response shape. `.passthrough()` + optional
- * field unions mean an unexpected-but-present field never throws; a genuinely
- * missing required field (`_id`, `platform`) still fails loudly.
+ * Field names below are CONFIRMED against the Zernio OpenAPI spec v1.0.4
+ * (docs.zernio.com/api/openapi, `SocialAccount` schema): the accounts list is
+ * `{ accounts: SocialAccount[], hasAnalyticsAccess }`, a `SocialAccount` has
+ * `_id`, `platform`, `username`, `displayName`, `profilePicture` (avatar URL,
+ * may be null), `profileUrl`, `isActive`, `needsReconnection`. connect returns
+ * `authUrl`; profile create returns `{ profile: { _id, … } }`. `.passthrough()`
+ * + optional fields mean an unexpected-but-present field never throws; a
+ * genuinely missing required field (`_id`, `platform`) still fails loudly.
+ *
+ * `/accounts/health` is likewise CONFIRMED against the same spec
+ * (`getAllAccountsHealth`): `{ summary, accounts: [{ accountId, status,
+ * canPost, needsReconnect, … }] }` — each entry keyed by `accountId` (NOT the
+ * list's `_id`), with `needsReconnect` as the definitive re-auth signal.
  */
 
 /** GET /v1/connect/{platform} → { authUrl } */
@@ -28,21 +32,18 @@ export const profileCreateResponseSchema = z.object({
 });
 
 /**
- * One account from GET /v1/accounts. `_id` + `platform` are documented and
- * required; the display fields below are best-effort (VERIFY) — Zernio may name
- * them differently, so several candidates are accepted and normalized.
+ * One account from GET /v1/accounts (the `SocialAccount` schema). `_id` +
+ * `platform` are required; `username`/`displayName` carry the handle and
+ * `profilePicture` the avatar URL (nullable per the spec — a platform that
+ * exposes no picture sends null).
  */
 export const zernioAccountSchema = z
   .object({
     _id: z.string().min(1),
     platform: z.string().min(1),
     username: z.string().optional(),
-    handle: z.string().optional(),
-    name: z.string().optional(),
     displayName: z.string().optional(),
-    picture: z.string().optional(),
-    avatar: z.string().optional(),
-    avatarUrl: z.string().optional(),
+    profilePicture: z.string().nullable().optional(),
   })
   .passthrough();
 
@@ -61,11 +62,10 @@ export type NormalizedAccount = {
   avatarUrl: string | null;
 };
 
-/** Map a raw Zernio account onto our columns, picking whichever display field is present. */
+/** Map a raw Zernio account onto our columns (`SocialAccount` → our shape). */
 export function normalizeAccount(raw: ZernioAccountRaw): NormalizedAccount {
-  const handle =
-    raw.username ?? raw.handle ?? raw.displayName ?? raw.name ?? raw._id;
-  const avatarUrl = raw.picture ?? raw.avatar ?? raw.avatarUrl ?? null;
+  const handle = raw.username ?? raw.displayName ?? raw._id;
+  const avatarUrl = raw.profilePicture ?? null;
   return {
     zernioAccountId: raw._id,
     platform: raw.platform,
@@ -75,17 +75,18 @@ export function normalizeAccount(raw: ZernioAccountRaw): NormalizedAccount {
 }
 
 /**
- * Account-health entry. ⚠️ VERIFY (§3): the health response shape is not in the
- * docs. Modeled as one entry per account keyed by `_id` with an optional
- * posting-capability signal; parsed defensively so the real shape (once known)
- * needs only this schema adjusted, not the callers. Accepts either a boolean
- * `canPost` or a string `status`.
+ * Account-health entry from `GET /v1/accounts/health` (spec v1.0.4). Keyed by
+ * `accountId` — the SAME account identity the accounts list exposes as `_id`,
+ * just named differently in the health payload. `status` kept a lenient string
+ * (spec enum healthy/warning/error) so an added value can't fail the parse and
+ * silently disable the whole health refresh.
  */
 export const accountHealthEntrySchema = z
   .object({
-    _id: z.string().min(1),
-    canPost: z.boolean().optional(),
+    accountId: z.string().min(1),
     status: z.string().optional(),
+    canPost: z.boolean().optional(),
+    needsReconnect: z.boolean().optional(),
   })
   .passthrough();
 
@@ -106,17 +107,16 @@ export type AccountStatus = "connected" | "needs_reauth";
  * "needs_reauth" would nag the user to reconnect a working account).
  */
 export function healthToStatus(entry: AccountHealthEntry): AccountStatus {
-  // Conservative: `connected` requires a POSITIVE health signal; anything
-  // unknown/absent/negative is `needs_reauth`. A false "reconnect" nag is
-  // recoverable in one click, whereas a false "connected" becomes a silent
-  // publish failure. ⚠️ VERIFY (§3): retune the positive-signal set once the
-  // real health response shape is confirmed. (A shape mismatch fails the zod
-  // parse upstream, so reconcile preserves existing statuses rather than
-  // flipping everything to needs_reauth.)
+  // `needsReconnect` is Zernio's definitive re-auth signal — trust it first.
+  if (entry.needsReconnect === true) return "needs_reauth";
+  // Otherwise stay conservative: `connected` requires a POSITIVE signal;
+  // anything unknown/absent/negative is `needs_reauth`. A false "reconnect" nag
+  // is recoverable in one click, whereas a false "connected" becomes a silent
+  // publish failure.
   if (entry.canPost === true) return "connected";
   if (
     entry.status &&
-    ["active", "connected", "ok", "healthy"].includes(
+    ["healthy", "active", "connected", "ok"].includes(
       entry.status.toLowerCase(),
     )
   ) {

@@ -8,7 +8,6 @@ import {
 import {
   deleteSocialAccountById,
   getSocialAccountById,
-  getZernioProfileByBrand,
 } from "@/server/dal/accounts";
 import { getBrandById } from "@/server/dal/brands";
 import { disconnectAccount as zernioDisconnect } from "@/server/services/zernio";
@@ -33,13 +32,9 @@ export const refreshBrandAccounts = withAction(
   async (data, ctx) => {
     // §7 step 4 — scoped fetch: cross-org / unassigned 404 before any work.
     await getBrandById(ctx, data.brandId);
-    const profile = await getZernioProfileByBrand(ctx, data.brandId);
-    // No profile → the brand has never connected an account; nothing to sync.
-    if (profile) {
-      await reconcileBrandAccounts(ctx, data.brandId, profile.zernioProfileId, {
-        mode: "health",
-      });
-    }
+    // reconcile resolves the brand's Zernio profile itself and no-ops in health
+    // mode when the brand has never provisioned one (nothing to sync).
+    await reconcileBrandAccounts(ctx, data.brandId, { mode: "health" });
     revalidatePath(`/brands/${data.brandId}/accounts`);
     return { brandId: data.brandId };
   },

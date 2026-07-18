@@ -17,13 +17,19 @@ vi.mock("@/server/services/zernio/client", () => ({
   getAccountsHealth,
 }));
 
-const { listSocialAccounts, insertSocialAccount, syncSocialAccount } =
-  vi.hoisted(() => ({
-    listSocialAccounts: vi.fn(),
-    insertSocialAccount: vi.fn(),
-    syncSocialAccount: vi.fn(),
-  }));
+const {
+  getZernioProfileByBrand,
+  listSocialAccounts,
+  insertSocialAccount,
+  syncSocialAccount,
+} = vi.hoisted(() => ({
+  getZernioProfileByBrand: vi.fn(),
+  listSocialAccounts: vi.fn(),
+  insertSocialAccount: vi.fn(),
+  syncSocialAccount: vi.fn(),
+}));
 vi.mock("@/server/dal/accounts", () => ({
+  getZernioProfileByBrand,
   listSocialAccounts,
   insertSocialAccount,
   syncSocialAccount,
@@ -45,6 +51,12 @@ function statusByZid() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Distinct internal (uuid) vs external (text) ids: the reconcile must use the
+  // INTERNAL id for the social_accounts FK and the EXTERNAL id for Zernio calls.
+  getZernioProfileByBrand.mockResolvedValue({
+    id: "prof_internal_uuid",
+    zernioProfileId: "prof_ext_1",
+  });
   syncSocialAccount.mockResolvedValue(true);
   insertSocialAccount.mockResolvedValue({ id: "sa" });
 });
@@ -70,7 +82,7 @@ describe("reconcile — connect mode is scoped to the reconnected platform", () 
       { zernioAccountId: "fb1", status: "needs_reauth" },
     ]);
 
-    await reconcileBrandAccounts(ctx, "brand_1", "prof_1", {
+    await reconcileBrandAccounts(ctx, "brand_1", {
       mode: "connect",
       platform: "instagram",
     });
@@ -79,6 +91,31 @@ describe("reconcile — connect mode is scoped to the reconnected platform", () 
     expect(byZid.ig1).toBe("connected"); // the reconnected platform
     expect(byZid.fb1).toBe("needs_reauth"); // untouched — preserved
     expect(getAccountsHealth).not.toHaveBeenCalled(); // connect mode: no health pull
+  });
+
+  it("inserts new accounts with the INTERNAL profile id, calls Zernio with the EXTERNAL id", async () => {
+    listAccounts.mockResolvedValue([
+      {
+        zernioAccountId: "ig1",
+        platform: "instagram",
+        handle: "@ig",
+        avatarUrl: null,
+      },
+    ]);
+    listSocialAccounts.mockResolvedValue([]); // first connect → insert branch
+
+    await reconcileBrandAccounts(ctx, "brand_1", {
+      mode: "connect",
+      platform: "instagram",
+    });
+
+    // Regression (B3 first-connect bug): the FK value must be the internal uuid,
+    // never the external Zernio profile id.
+    expect(insertSocialAccount).toHaveBeenCalledWith(
+      ctx,
+      expect.objectContaining({ zernioProfileId: "prof_internal_uuid" }),
+    );
+    expect(listAccounts).toHaveBeenCalledWith("prof_ext_1");
   });
 });
 
@@ -102,10 +139,11 @@ describe("reconcile — health mode", () => {
       { zernioAccountId: "ig1", status: "connected" },
       { zernioAccountId: "fb1", status: "connected" },
     ]);
-    // Health reports ig1 unpostable; fb1 absent from the response.
-    getAccountsHealth.mockResolvedValue([{ _id: "ig1", canPost: false }]);
+    // Health reports ig1 unpostable; fb1 absent from the response. Entries are
+    // keyed by `accountId` (the health payload's field, = the list's `_id`).
+    getAccountsHealth.mockResolvedValue([{ accountId: "ig1", canPost: false }]);
 
-    await reconcileBrandAccounts(ctx, "brand_1", "prof_1", { mode: "health" });
+    await reconcileBrandAccounts(ctx, "brand_1", { mode: "health" });
 
     const byZid = statusByZid();
     expect(byZid.ig1).toBe("needs_reauth"); // health said so
@@ -126,7 +164,7 @@ describe("reconcile — health mode", () => {
     ]);
     getAccountsHealth.mockRejectedValue(new Error("health down"));
 
-    await reconcileBrandAccounts(ctx, "brand_1", "prof_1", { mode: "health" });
+    await reconcileBrandAccounts(ctx, "brand_1", { mode: "health" });
 
     expect(statusByZid().ig1).toBe("needs_reauth"); // preserved through the outage
   });

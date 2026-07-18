@@ -47,7 +47,7 @@ export async function GET(
     // Persist/refresh from Zernio's account list for this profile. No health
     // pull: only the just-reconnected platform is proven healthy (others keep
     // their status).
-    await reconcileBrandAccounts(ctx, brandId, state.profileId, {
+    await reconcileBrandAccounts(ctx, brandId, {
       mode: "connect",
       platform: state.platform,
     });
