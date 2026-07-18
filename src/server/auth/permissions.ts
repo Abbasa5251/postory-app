@@ -26,7 +26,8 @@ export const statement = {
   // endpoints (invite, remove member, update org, ...).
   ...defaultStatements,
   // §7 "brand: create/edit/delete" (owner/admin) + read for approver visibility
-  brand: ["create", "update", "delete", "read"],
+  // + "assign" (B5): manage which members can access a brand (owner/admin).
+  brand: ["create", "update", "delete", "read", "assign"],
   // §7 "account: connect/disconnect" (owner/admin/approver)
   account: ["connect", "disconnect"],
   // §7 post rows — create ⊃ edit/submit · approve ⊃ request-changes (internal) · schedule ⊃ unschedule/retry
@@ -55,7 +56,7 @@ export type Permission = {
 // differ only in the plugin's built-in org statements (ownerAc can delete the
 // org / transfer ownership).
 const fullAppAccess = {
-  brand: ["create", "update", "delete", "read"],
+  brand: ["create", "update", "delete", "read", "assign"],
   account: ["connect", "disconnect"],
   post: ["create", "approve", "schedule"],
   ai: ["generate"],

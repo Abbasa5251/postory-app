@@ -37,7 +37,7 @@ const ROLES = Object.keys(ROLE_LABELS) as Role[];
 // Every (resource, action) the app declares. Drives full coverage below.
 type AppResource = "brand" | "account" | "post" | "ai" | "analytics";
 const APP_ACTIONS: Record<AppResource, readonly string[]> = {
-  brand: ["create", "update", "delete", "read"],
+  brand: ["create", "update", "delete", "read", "assign"],
   account: ["connect", "disconnect"],
   post: ["create", "approve", "schedule"],
   ai: ["generate"],
@@ -52,21 +52,22 @@ const EXPECTED: Record<
   Partial<Record<AppResource, readonly string[]>>
 > = {
   owner: {
-    brand: ["create", "update", "delete", "read"],
+    // B5: brand:assign — owner/admin staff creators onto brands.
+    brand: ["create", "update", "delete", "read", "assign"],
     account: ["connect", "disconnect"],
     post: ["create", "approve", "schedule"],
     ai: ["generate"],
     analytics: ["view"],
   },
   admin: {
-    brand: ["create", "update", "delete", "read"],
+    brand: ["create", "update", "delete", "read", "assign"],
     account: ["connect", "disconnect"],
     post: ["create", "approve", "schedule"],
     ai: ["generate"],
     analytics: ["view"],
   },
   approver: {
-    brand: ["read"], // reads brands; cannot create/update/delete them
+    brand: ["read"], // reads brands; cannot create/update/delete/assign them
     account: ["connect", "disconnect"],
     post: ["create", "approve", "schedule"],
     ai: ["generate"],
