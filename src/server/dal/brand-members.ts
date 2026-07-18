@@ -81,6 +81,27 @@ export async function listBrandMemberIds(
 }
 
 /**
+ * The brand ids one member is assigned to (B5.3) — the mirror of
+ * listBrandMemberIds, read from the member's side for the member-centric
+ * surface. Org + member scoped; no assertBrandAccess, because this lists a
+ * member's own assignments rather than gating access to a single named brand —
+ * orgScope is the tenancy guarantee (§6.4). The caller (owner/admin only) is
+ * gated at the page/action, and every row it returns is provably in ctx.orgId.
+ */
+export async function listBrandIdsForMember(
+  ctx: AuthCtx,
+  memberId: string,
+): Promise<string[]> {
+  const rows = await db
+    .select({ brandId: brandMembers.brandId })
+    .from(brandMembers)
+    .where(
+      and(orgScope(ctx, brandMembers), eq(brandMembers.memberId, memberId)),
+    );
+  return rows.map((r) => r.brandId);
+}
+
+/**
  * Assign a member to a brand (idempotent). org_id is written from the ctx,
  * never input. The target member is proven in-org first (assertMemberInOrg),
  * then the row is inserted with `onConflictDoNothing` on the
