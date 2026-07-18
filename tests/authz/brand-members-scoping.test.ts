@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   assignMember,
   listBrandMemberIds,
+  resolveCreatorBrandIds,
   unassignMember,
 } from "@/server/dal/brand-members";
 import { NotFoundError } from "@/server/domain/errors";
@@ -135,6 +136,33 @@ describe("assignMember — target-member-in-org guard + audited insert", () => {
       ),
     ).rejects.toThrow(NotFoundError);
     expect(select).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveCreatorBrandIds — the getAuthCtx bootstrap read", () => {
+  it("renders an org_id + member_id scoped query on brand_members and returns the brand ids", async () => {
+    // The one documented §6 exception: raw orgId/memberId (it builds the ctx),
+    // org-scoped by an explicit eq(orgId) rather than orgScope(). The orgId is
+    // session-derived (getAuthCtx), never client input.
+    const chain = makeSelectChain(select, [
+      { brandId: "b1" },
+      { brandId: "b2" },
+    ]);
+
+    const ids = await resolveCreatorBrandIds("org_1", "member_9");
+
+    const query = renderedWhere(chain);
+    expect(query.sql).toContain('"brand_members"."org_id" = $1');
+    expect(query.sql).toContain('"brand_members"."member_id" = $2');
+    expect(query.params).toEqual(["org_1", "member_9"]);
+    expect(ids).toEqual(["b1", "b2"]);
+  });
+
+  it("a creator with no assignments resolves to an empty list (→ sees nothing)", async () => {
+    makeSelectChain(select, []);
+    await expect(resolveCreatorBrandIds("org_1", "member_9")).resolves.toEqual(
+      [],
+    );
   });
 });
 

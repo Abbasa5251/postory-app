@@ -16,8 +16,35 @@ import type { AuthCtx } from "./types";
  * may be stored for any member (owner/admin/approver see all Brands regardless —
  * the row is inert for them, resolved in getAuthCtx in B5.2).
  *
- * `resolveCreatorBrandIds` (the getAuthCtx bootstrap read) lands in B5.2.
+ * `resolveCreatorBrandIds` (the getAuthCtx bootstrap read) is the ONE
+ * documented exception to §6's ctx-first rule — see its doc-comment below.
  */
+
+/**
+ * Resolve a creator's assigned brand ids — the getAuthCtx bootstrap read (B5.2).
+ *
+ * The ONE documented §6 exception: it takes raw `orgId` + `memberId`, NOT an
+ * `AuthCtx`, because it *builds* the `AuthCtx.brandIds` that every other DAL
+ * method demands (the ctx bootstrap cycle — a method that constructs the ctx
+ * cannot itself require one). It stays org-scoped by the explicit
+ * `eq(brandMembers.orgId, orgId)` predicate — NOT `orgScope()`, which needs a
+ * ctx — and `orgId` originates from `session.session.activeOrganizationId`
+ * (getAuthCtx), never client input, so tenancy holds. Only getAuthCtx calls
+ * this, and only for `role === "creator"`; every other role short-circuits to
+ * "all" and never reaches here.
+ */
+export async function resolveCreatorBrandIds(
+  orgId: string,
+  memberId: string,
+): Promise<string[]> {
+  const rows = await db
+    .select({ brandId: brandMembers.brandId })
+    .from(brandMembers)
+    .where(
+      and(eq(brandMembers.orgId, orgId), eq(brandMembers.memberId, memberId)),
+    );
+  return rows.map((r) => r.brandId);
+}
 
 /**
  * Prove the target member belongs to the caller's org BEFORE writing an
