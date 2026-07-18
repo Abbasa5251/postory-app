@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -8,8 +7,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { ROLE_LABELS, type Role } from "@/lib/auth/roles";
-import { auth } from "@/server/auth/auth";
 import { getAuthCtx } from "@/server/auth/context";
+import { listOrgMembers } from "@/server/dal/org";
 
 // Thin route (§5): gate + read + render. Navigation into the member-centric
 // Brand access surface. Managing member access is owner/admin only — the same
@@ -19,9 +18,8 @@ export default async function MembersPage() {
   const ctx = await getAuthCtx();
   if (ctx.role !== "owner" && ctx.role !== "admin") notFound();
 
-  // listMembers defaults to the active org and self-verifies membership; ≤10
-  // seats (D1) so the default page is the whole team.
-  const { members } = await auth.api.listMembers({ headers: await headers() });
+  // Org-scoped by ctx (§6); ≤10 seats (D1) so the whole team is one read.
+  const members = await listOrgMembers(ctx);
 
   return (
     <div className="flex flex-col gap-6">
@@ -41,9 +39,9 @@ export default async function MembersPage() {
             >
               <Card className="transition-colors hover:border-ring">
                 <CardHeader>
-                  <CardTitle>{member.user.name}</CardTitle>
+                  <CardTitle>{member.name}</CardTitle>
                   <CardDescription>
-                    {member.user.email} ·{" "}
+                    {member.email} ·{" "}
                     {ROLE_LABELS[member.role as Role] ?? member.role}
                   </CardDescription>
                 </CardHeader>

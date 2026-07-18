@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -6,10 +5,10 @@ import {
   MemberAccessSection,
 } from "@/components/features/brands/member-access-section";
 import { ROLE_LABELS, type Role } from "@/lib/auth/roles";
-import { auth } from "@/server/auth/auth";
 import { getAuthCtx } from "@/server/auth/context";
 import { listBrandIdsForMember } from "@/server/dal/brand-members";
 import { listBrands } from "@/server/dal/brands";
+import { listOrgMembers } from "@/server/dal/org";
 
 // Thin route (§5): gate + scoped DAL reads + render. `params` is a Promise in
 // Next 16. This is the member-centric mirror of the Brand settings Access
@@ -27,15 +26,14 @@ export default async function MemberAccessPage({
   // signal that this surface exists.
   if (ctx.role !== "owner" && ctx.role !== "admin") notFound();
 
-  // listMembers defaults to the active org and self-verifies membership; an
-  // agency has ≤10 seats (D1) so the default page is the whole team. Finding
-  // the target here is the tenancy check: a member id from another org is not
-  // in this list → 404 (never confirm it exists elsewhere).
-  const [memberList, brands] = await Promise.all([
-    auth.api.listMembers({ headers: await headers() }),
+  // listOrgMembers is org-scoped by ctx (§6); ≤10 seats (D1) so the whole team
+  // is one read. Finding the target here is the tenancy check: a member id from
+  // another org is not in this list → 404 (never confirm it exists elsewhere).
+  const [members, brands] = await Promise.all([
+    listOrgMembers(ctx),
     listBrands(ctx),
   ]);
-  const target = memberList.members.find((m) => m.id === memberId);
+  const target = members.find((m) => m.id === memberId);
   if (!target) notFound();
 
   const assignedBrandIds = await listBrandIdsForMember(ctx, memberId);
@@ -54,12 +52,9 @@ export default async function MemberAccessPage({
         >
           ← Members
         </Link>
-        <h1 className="font-heading text-2xl font-semibold">
-          {target.user.name}
-        </h1>
+        <h1 className="font-heading text-2xl font-semibold">{target.name}</h1>
         <p className="text-sm text-muted-foreground">
-          {target.user.email} ·{" "}
-          {ROLE_LABELS[target.role as Role] ?? target.role}
+          {target.email} · {ROLE_LABELS[target.role as Role] ?? target.role}
         </p>
       </div>
 
@@ -73,7 +68,7 @@ export default async function MemberAccessPage({
         </div>
         <MemberAccessSection
           memberId={target.id}
-          memberName={target.user.name}
+          memberName={target.name}
           memberRole={target.role}
           brands={accessBrands}
           assignedBrandIds={assignedBrandIds}
