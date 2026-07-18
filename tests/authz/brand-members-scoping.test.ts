@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   assignMember,
+  listBrandIdsForMember,
   listBrandMemberIds,
   unassignMember,
 } from "@/server/dal/brand-members";
@@ -62,6 +63,22 @@ describe("listBrandMemberIds — org + brand scoped", () => {
       ),
     ).rejects.toThrow(NotFoundError);
     expect(select).not.toHaveBeenCalled();
+  });
+});
+
+describe("listBrandIdsForMember — org + member scoped (B5.3)", () => {
+  it("filters on org_id = ctx.orgId AND member_id, returns the brand ids", async () => {
+    const chain = makeSelectChain(select, [
+      { brandId: "b1" },
+      { brandId: "b2" },
+    ]);
+    const ids = await listBrandIdsForMember(adminAll(), "member_9");
+
+    const query = renderedWhere(chain);
+    expect(query.sql).toContain('"brand_members"."org_id" = $1');
+    expect(query.sql).toContain('"brand_members"."member_id" = $2');
+    expect(query.params).toEqual(["org_1", "member_9"]);
+    expect(ids).toEqual(["b1", "b2"]);
   });
 });
 
