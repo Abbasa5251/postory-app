@@ -33,6 +33,14 @@ account — they exist only as a `client_contact_email` on a Brand and as portal
 tokens.
 _Avoid_: Customer, user, reviewer, stakeholder (loosely).
 
+**Brand Assignment**:
+The link that grants a Member access to a specific Brand. It only _gates_
+Members whose role is `creator` — a creator sees exactly the Brands they are
+assigned to, and nothing until an admin assigns them. Owner, admin, and approver
+always see every Brand in the Organization regardless of assignments (an
+assignment for them is stored but inert). Managed by owner/admin.
+_Avoid_: brand role, brand permission, team membership, brand seat.
+
 ### Brand content & voice
 
 **Voice Profile**:
