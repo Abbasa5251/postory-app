@@ -6,15 +6,19 @@ import * as z from "zod";
  * parsed at the boundary, never trusted). This module is the ONLY place that
  * knows Zernio's wire shapes.
  *
- * ⚠️ VERIFY (§3): the docs expose some field names but not all. Confirmed from
- * docs.zernio.com examples: connect returns `authUrl`; profile create returns
- * `{ profile: { _id, name, description } }`; accounts list returns
- * `{ accounts: [{ _id, platform, … }] }` (Zernio ids are `_id`). NOT shown in
- * the docs and therefore parsed DEFENSIVELY below (confirm against the live API
- * / OpenAPI before B3 ships): the account handle/username/avatar field names,
- * and the entire account-health response shape. `.passthrough()` + optional
- * field unions mean an unexpected-but-present field never throws; a genuinely
- * missing required field (`_id`, `platform`) still fails loudly.
+ * Field names below are CONFIRMED against the Zernio OpenAPI spec v1.0.4
+ * (docs.zernio.com/api/openapi, `SocialAccount` schema): the accounts list is
+ * `{ accounts: SocialAccount[], hasAnalyticsAccess }`, a `SocialAccount` has
+ * `_id`, `platform`, `username`, `displayName`, `profilePicture` (avatar URL,
+ * may be null), `profileUrl`, `isActive`, `needsReconnection`. connect returns
+ * `authUrl`; profile create returns `{ profile: { _id, … } }`. `.passthrough()`
+ * + optional fields mean an unexpected-but-present field never throws; a
+ * genuinely missing required field (`_id`, `platform`) still fails loudly.
+ *
+ * ⚠️ VERIFY (§3): the `/accounts/health` path + shape below remain best-effort
+ * (the spec instead exposes `isActive`/`needsReconnection` on the list item and
+ * a `status` query filter — a follow-up should move status off the guessed
+ * health endpoint onto those confirmed fields).
  */
 
 /** GET /v1/connect/{platform} → { authUrl } */
@@ -28,21 +32,18 @@ export const profileCreateResponseSchema = z.object({
 });
 
 /**
- * One account from GET /v1/accounts. `_id` + `platform` are documented and
- * required; the display fields below are best-effort (VERIFY) — Zernio may name
- * them differently, so several candidates are accepted and normalized.
+ * One account from GET /v1/accounts (the `SocialAccount` schema). `_id` +
+ * `platform` are required; `username`/`displayName` carry the handle and
+ * `profilePicture` the avatar URL (nullable per the spec — a platform that
+ * exposes no picture sends null).
  */
 export const zernioAccountSchema = z
   .object({
     _id: z.string().min(1),
     platform: z.string().min(1),
     username: z.string().optional(),
-    handle: z.string().optional(),
-    name: z.string().optional(),
     displayName: z.string().optional(),
-    picture: z.string().optional(),
-    avatar: z.string().optional(),
-    avatarUrl: z.string().optional(),
+    profilePicture: z.string().nullable().optional(),
   })
   .passthrough();
 
@@ -61,11 +62,10 @@ export type NormalizedAccount = {
   avatarUrl: string | null;
 };
 
-/** Map a raw Zernio account onto our columns, picking whichever display field is present. */
+/** Map a raw Zernio account onto our columns (`SocialAccount` → our shape). */
 export function normalizeAccount(raw: ZernioAccountRaw): NormalizedAccount {
-  const handle =
-    raw.username ?? raw.handle ?? raw.displayName ?? raw.name ?? raw._id;
-  const avatarUrl = raw.picture ?? raw.avatar ?? raw.avatarUrl ?? null;
+  const handle = raw.username ?? raw.displayName ?? raw._id;
+  const avatarUrl = raw.profilePicture ?? null;
   return {
     zernioAccountId: raw._id,
     platform: raw.platform,

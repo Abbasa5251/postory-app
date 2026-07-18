@@ -41,45 +41,55 @@ describe("Zernio response schemas", () => {
 });
 
 describe("normalizeAccount", () => {
-  it("maps _id/platform and picks the first available display field", () => {
+  it("maps _id/platform/username and the profilePicture avatar", () => {
     expect(
-      normalizeAccount({ _id: "a1", platform: "instagram", username: "@acme" }),
+      normalizeAccount({
+        _id: "a1",
+        platform: "instagram",
+        username: "@acme",
+        profilePicture: "https://img/acme.png",
+      }),
     ).toEqual({
       zernioAccountId: "a1",
       platform: "instagram",
       handle: "@acme",
-      avatarUrl: null,
+      avatarUrl: "https://img/acme.png",
     });
   });
 
-  it("falls back through handle → displayName → name → _id, and picks an avatar", () => {
-    // handle wins over displayName, name, and _id.
+  it("resolves the handle username → displayName → _id", () => {
+    // username wins over displayName and _id.
     expect(
       normalizeAccount({
         _id: "a1",
         platform: "x",
-        handle: "H",
+        username: "U",
         displayName: "D",
-        name: "N",
       }).handle,
-    ).toBe("H");
-    // displayName wins over name and _id.
+    ).toBe("U");
+    // displayName wins over _id.
     expect(
-      normalizeAccount({
-        _id: "a1",
-        platform: "x",
-        displayName: "D",
-        name: "N",
-      }).handle,
+      normalizeAccount({ _id: "a1", platform: "x", displayName: "D" }).handle,
     ).toBe("D");
-    expect(
-      normalizeAccount({ _id: "a1", platform: "x", name: "Acme" }).handle,
-    ).toBe("Acme");
     expect(normalizeAccount({ _id: "a1", platform: "x" }).handle).toBe("a1");
+  });
+
+  it("reads the avatar from profilePicture (the confirmed field), null when absent", () => {
+    // Regression: the pre-fix code looked for picture/avatar/avatarUrl and
+    // never `profilePicture`, so every avatar came back null (blank initials).
     expect(
-      normalizeAccount({ _id: "a1", platform: "x", picture: "http://img" })
+      normalizeAccount({
+        _id: "a1",
+        platform: "x",
+        profilePicture: "https://img/p.png",
+      }).avatarUrl,
+    ).toBe("https://img/p.png");
+    expect(normalizeAccount({ _id: "a1", platform: "x" }).avatarUrl).toBe(null);
+    // The spec allows an explicit null profilePicture.
+    expect(
+      normalizeAccount({ _id: "a1", platform: "x", profilePicture: null })
         .avatarUrl,
-    ).toBe("http://img");
+    ).toBe(null);
   });
 });
 

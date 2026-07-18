@@ -1,11 +1,13 @@
 import "server-only";
 import { isPlatform } from "@/lib/platforms/config";
 import {
+  getZernioProfileByBrand,
   insertSocialAccount,
   listSocialAccounts,
   syncSocialAccount,
 } from "@/server/dal/accounts";
 import type { AuthCtx } from "@/server/dal/types";
+import { NotFoundError } from "@/server/domain/errors";
 import { log } from "@/server/services/observability";
 import { getAccountsHealth, listAccounts } from "./client";
 import { healthToStatus, type AccountStatus } from "./schemas";
@@ -30,15 +32,28 @@ import { healthToStatus, type AccountStatus } from "./schemas";
 export async function reconcileBrandAccounts(
   ctx: AuthCtx,
   brandId: string,
-  profileId: string,
   opts: { mode: "connect"; platform: string } | { mode: "health" },
 ): Promise<void> {
-  const zAccounts = await listAccounts(profileId);
+  // The brand's single Zernio profile carries BOTH ids we need and is the one
+  // place they're mapped: `zernioProfileId` (external, text) drives the Zernio
+  // API calls below, while `id` (internal uuid) is the FK value stored on
+  // social_accounts. Passing the external id into the uuid FK was the B3 bug
+  // that silently failed every first-connect insert.
+  const profile = await getZernioProfileByBrand(ctx, brandId);
+  if (!profile) {
+    // No profile → the brand never provisioned Zernio. A manual Refresh is a
+    // benign no-op; a connect callback can't reach here (the profile is
+    // provisioned at connect-init) so treat it as 404-shaped (§7).
+    if (opts.mode === "health") return;
+    throw new NotFoundError("zernio_profile", brandId);
+  }
+
+  const zAccounts = await listAccounts(profile.zernioProfileId);
 
   const statusByZid = new Map<string, AccountStatus>();
   if (opts.mode === "health") {
     try {
-      for (const entry of await getAccountsHealth(profileId)) {
+      for (const entry of await getAccountsHealth(profile.zernioProfileId)) {
         statusByZid.set(entry._id, healthToStatus(entry));
       }
     } catch (error) {
@@ -86,7 +101,8 @@ export async function reconcileBrandAccounts(
     } else {
       await insertSocialAccount(ctx, {
         brandId,
-        zernioProfileId: profileId,
+        // Internal zernio_profiles.id (the uuid FK target), NOT the external id.
+        zernioProfileId: profile.id,
         platform: acct.platform,
         zernioAccountId: acct.zernioAccountId,
         handle: acct.handle,
