@@ -1,0 +1,136 @@
+# POSTORY — fully local stack. Replaces the two cloud dependencies with
+# protocol-compatible local containers so the app code runs unchanged:
+#   Neon Postgres  → postgres:18 + local-neon-http-proxy (neon HTTP wire)
+#   Upstash Redis  → redis:7      + serverless-redis-http (Upstash REST wire)
+#
+# Bring it up:   docker compose up --build
+# Reset data:    docker compose down -v
+#
+# All values default to zero-config local dev; override any of them from a
+# sibling `.env` file or the shell. None of these are real secrets.
+
+name: postory
+
+x-pg-user: &pg-user ${POSTGRES_USER:-postgres}
+x-pg-pass: &pg-pass ${POSTGRES_PASSWORD:-postgres}
+x-pg-db: &pg-db ${POSTGRES_DB:-postory}
+
+services:
+  # ---- Postgres (replaces Neon) ----
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: *pg-user
+      POSTGRES_PASSWORD: *pg-pass
+      POSTGRES_DB: *pg-db
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # Postgres 18+ stores data in a major-version subdirectory; the mount
+      # must be at /var/lib/postgresql (not /data) per the official image.
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postory}"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  # ---- Neon HTTP proxy: speaks the neon-http wire protocol to Postgres ----
+  neon-proxy:
+    image: ghcr.io/timowilhelm/local-neon-http-proxy:main
+    environment:
+      PG_CONNECTION_STRING: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-postory}
+    ports:
+      - "${NEON_PROXY_PORT:-4444}:4444"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ---- Redis (replaces Upstash) ----
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  # ---- SRH: Upstash-REST-compatible proxy in front of Redis ----
+  srh:
+    image: hiett/serverless-redis-http:0.0.10
+    environment:
+      SRH_MODE: env
+      SRH_TOKEN: ${UPSTASH_REDIS_REST_TOKEN:-local_dev_token}
+      SRH_CONNECTION_STRING: redis://redis:6379
+    ports:
+      - "${SRH_PORT:-8079}:80"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ---- One-shot migration job: drizzle-kit connects DIRECTLY to Postgres
+  #      (wire protocol), not through the neon proxy. ----
+  migrator:
+    build:
+      context: .
+      target: migrator
+    environment:
+      SKIP_ENV_VALIDATION: "1"
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-postory}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # ---- The Next.js app (standalone runtime) ----
+  app:
+    build:
+      context: .
+      target: runner
+    environment:
+      NODE_ENV: production
+      # neon-http → local proxy (see src/db/db.ts). DATABASE_URL host is the
+      # proxy service name; only its hostname + credentials flow through.
+      USE_LOCAL_NEON_PROXY: "true"
+      NEON_LOCAL_PROXY_PORT: "4444"
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@neon-proxy:5432/${POSTGRES_DB:-postory}
+      # Upstash client → SRH proxy (unchanged @upstash/redis client).
+      UPSTASH_REDIS_REST_URL: http://srh:80
+      UPSTASH_REDIS_REST_TOKEN: ${UPSTASH_REDIS_REST_TOKEN:-local_dev_token}
+      # better-auth. Dev secret — override for anything shared.
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-dev_local_secret_change_me_0123456789abcd}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      # Email: Resend has no local emulator (HTTP API). A dummy key + a
+      # non-sandbox EMAIL_FROM satisfy the prod boot guards; actual sends
+      # will no-op/fail locally, which is expected for a fully-local stack.
+      RESEND_API_KEY: ${RESEND_API_KEY:-re_local_dev_dummy}
+      EMAIL_FROM: ${EMAIL_FROM:-Postory <no-reply@postory.local>}
+      # Optional integrations — unset locally (services throw lazily on use).
+      ZERNIO_API_KEY: ${ZERNIO_API_KEY:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+      neon-proxy:
+        condition: service_started
+      srh:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+volumes:
+  postgres-data:
+  redis-data:

@@ -4,6 +4,15 @@ import * as z from "zod";
 export const env = createEnv({
   server: {
     DATABASE_URL: z.url(),
+    // Local/Docker only: route the neon-http driver through a
+    // `local-neon-http-proxy` container (which speaks Neon's HTTP wire
+    // protocol in front of a plain Postgres) instead of Neon's cloud
+    // endpoint. Unset (or "false") everywhere else — production talks to Neon
+    // directly. See src/db/db.ts.
+    USE_LOCAL_NEON_PROXY: z.stringbool().optional(),
+    // Port the local neon proxy's /sql endpoint listens on (proxy default:
+    // 4444). Only read when USE_LOCAL_NEON_PROXY is on.
+    NEON_LOCAL_PROXY_PORT: z.coerce.number().int().positive().optional(),
     BETTER_AUTH_SECRET: z.string().min(32),
     BETTER_AUTH_URL: z.url(),
     // Optional until a Google OAuth client is provisioned; the google social
