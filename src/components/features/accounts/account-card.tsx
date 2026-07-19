@@ -53,17 +53,24 @@ export function AccountCard({
           <AccountStatusBadge status={account.status} />
         </div>
 
-        <div className="truncate text-sm font-medium">{account.handle}</div>
+        <div>
+          <div className="truncate text-sm font-medium">{account.handle}</div>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {needsReauth
+              ? "Reconnect to keep posts publishing."
+              : "Publishing normally."}
+          </p>
+        </div>
 
         {canManage && (
-          <div className="flex items-center gap-2">
+          <div className="mt-1 flex items-center gap-2">
             {needsReauth && (
               <form
                 method="post"
                 action={`/api/brands/${brandId}/accounts/connect?platform=${account.platform}`}
               >
-                <Button type="submit" variant="outline" size="sm">
-                  Reconnect
+                <Button type="submit" size="sm">
+                  Reconnect now
                 </Button>
               </form>
             )}
