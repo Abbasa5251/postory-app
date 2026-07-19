@@ -1,10 +1,11 @@
 import { Link2 } from "lucide-react";
 import { notFound } from "next/navigation";
 import { AccountCard } from "@/components/features/accounts/account-card";
-import { ConnectAccountButtons } from "@/components/features/accounts/connect-account-buttons";
+import { ConnectAccountDialog } from "@/components/features/accounts/connect-account-dialog";
 import { RefreshAccountsButton } from "@/components/features/accounts/refresh-accounts-button";
 import { PageHeader } from "@/components/features/shell/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
+import { PLATFORM_LIST } from "@/lib/platforms/config";
 import { getAuthCtx } from "@/server/auth/context";
 import { listSocialAccounts } from "@/server/dal/accounts";
 import { getBrandById } from "@/server/dal/brands";
@@ -45,11 +46,30 @@ export default async function BrandAccountsPage({
   const canManage =
     ctx.role === "owner" || ctx.role === "admin" || ctx.role === "approver";
 
+  // Only offer platforms that aren't already connected for this brand (per the
+  // founder's Connect-account UX). Note ADR-009 would technically allow a second
+  // same-platform account; this modal deliberately hides connected platforms.
+  const connectedPlatforms = new Set(accounts.map((a) => a.platform));
+  const availablePlatforms = PLATFORM_LIST.filter(
+    (p) => !connectedPlatforms.has(p.id),
+  ).map((p) => ({ id: p.id, label: p.label, color: p.color }));
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Connections"
         description={`Social accounts publishing on behalf of ${brand.name}.`}
+        actions={
+          canManage ? (
+            <>
+              <RefreshAccountsButton brandId={brand.id} />
+              <ConnectAccountDialog
+                brandId={brand.id}
+                platforms={availablePlatforms}
+              />
+            </>
+          ) : undefined
+        }
       />
 
       {error && (
@@ -69,49 +89,29 @@ export default async function BrandAccountsPage({
         </p>
       )}
 
-      {canManage && (
-        <section className="flex flex-col gap-3">
-          <h2 className="font-heading text-lg font-medium">
-            Connect an account
-          </h2>
-          <ConnectAccountButtons brandId={brand.id} />
-        </section>
+      {accounts.length === 0 ? (
+        <EmptyState
+          icon={<Link2 className="size-5" />}
+          title="No accounts connected yet"
+          description={
+            canManage
+              ? "Use “Connect account” to link a social account and start publishing for this brand."
+              : "An account manager hasn't connected any social accounts for this brand yet."
+          }
+        />
+      ) : (
+        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {accounts.map((account) => (
+            <li key={account.id}>
+              <AccountCard
+                account={account}
+                brandId={brand.id}
+                canManage={canManage}
+              />
+            </li>
+          ))}
+        </ul>
       )}
-
-      <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-4">
-          <h2 className="font-heading text-lg font-medium">
-            Connected accounts
-          </h2>
-          {/* Always available to managers — Refresh is also how a drifted
-              connection (authorized at Zernio but not persisted here, e.g. a
-              closed tab) self-heals, which must work even with zero local rows. */}
-          {canManage && <RefreshAccountsButton brandId={brand.id} />}
-        </div>
-        {accounts.length === 0 ? (
-          <EmptyState
-            icon={<Link2 className="size-5" />}
-            title="No accounts connected yet"
-            description={
-              canManage
-                ? "Connect a social account above to start publishing for this brand."
-                : "An account manager hasn't connected any social accounts for this brand yet."
-            }
-          />
-        ) : (
-          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {accounts.map((account) => (
-              <li key={account.id}>
-                <AccountCard
-                  account={account}
-                  brandId={brand.id}
-                  canManage={canManage}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
     </div>
   );
 }
