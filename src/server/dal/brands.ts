@@ -1,5 +1,6 @@
 import "server-only";
 import { and, eq } from "drizzle-orm";
+import { cache } from "react";
 import { db } from "@/db/db";
 import { brands } from "@/db/schemas/brands";
 import type { OrgAuditEvent } from "@/lib/validation/audit";
@@ -19,14 +20,19 @@ import type { AuthCtx } from "./types";
  * audit template in dal/audit.ts.
  */
 
-/** All brands the caller can see: org-scoped, narrowed to assigned brands for creators. */
-export async function listBrands(ctx: AuthCtx) {
+/**
+ * All brands the caller can see: org-scoped, narrowed to assigned brands for
+ * creators. Memoized per-request (React `cache()`): the layout and the page
+ * both list brands on one navigation — with a memoized `ctx` (same reference
+ * from getAuthCtx) they share a single query instead of re-hitting Neon.
+ */
+export const listBrands = cache(async (ctx: AuthCtx) => {
   return db
     .select()
     .from(brands)
     .where(and(orgScope(ctx, brands), brandScope(ctx, brands.id)))
     .orderBy(brands.name);
-}
+});
 
 /**
  * One brand by id. Throws NotFoundError for nonexistent, cross-org and
