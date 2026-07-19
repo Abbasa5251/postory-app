@@ -51,43 +51,57 @@ export async function recordAuthEvent(input: AuthAuditEvent): Promise<void> {
  * a server action WITH an error boundary above it, and silently swallowing
  * the failure would mean tenant data changed with no trace.
  *
- * # The mutation+audit atomicity template (drizzle-orm/neon-http)
+ * # The mutation+audit atomicity template (drizzle-orm/node-postgres)
  *
- * db.transaction() THROWS on this driver; db.batch() is a real atomic
- * transaction (one Neon HTTP transaction, all-or-nothing), but statements
- * are built up-front — no statement can consume a sibling's result.
+ * node-postgres supports real interactive transactions, so a mutation and its
+ * audit row commit-or-roll-back together inside db.transaction(). Pass the `tx`
+ * handle to buildAuditInsert so the audit insert joins the same transaction;
+ * omit it and the insert runs on the module `db`, OUTSIDE the tx — a
+ * correctness bug.
+ *
+ * (Historical note: under the old neon-http driver db.transaction() threw and
+ * db.batch() was the atomic primitive, but its statements were built up-front
+ * and committed unconditionally — so a raced 0-row update left a no-op audit
+ * orphan. Interactive transactions remove that residual: we branch on the
+ * mutation's result BEFORE writing the audit row.)
  *
  * Case A — entity id known before execution (updates, deletes, state
- * transitions — the common case). Atomic: an audit failure rolls the
- * mutation back and vice versa:
+ * transitions — the common case):
  *
- *   const [updated] = await db.batch([
- *     db.update(posts).set(next)
+ *   return await db.transaction(async (tx) => {
+ *     const updated = await tx.update(posts).set(next)
  *       .where(and(orgScope(ctx, posts), eq(posts.id, postId)))
- *       .returning({ id: posts.id }),
- *     buildAuditInsert(ctx, { action: "post.approve", entityType: "post", entityId: postId }),
- *   ]);
- *   if (updated.length === 0) throw new NotFoundError("post", postId);
- *   // Accepted residual: a raced 0-row update still commits its audit row
- *   // (no-op audit orphan). The §7 step-4 scoped fetch makes that race
- *   // narrow, and the returning() check above surfaces it loudly.
+ *       .returning({ id: posts.id });
+ *     // Throw BEFORE the audit insert: rolls back with NO orphan audit row.
+ *     if (updated.length === 0) throw new NotFoundError("post", postId);
+ *     await buildAuditInsert(ctx, { action: "post.approve", entityType: "post", entityId: postId }, tx);
+ *     return updated[0];
+ *   });
  *
- * Case B — creates with a DB-generated uuidv7() id: batch statements can't
- * reference sibling results, so create sequentially and audit after; a
- * failed audit then throws (action fails loudly, entity keeps existing —
- * manual-remediation orphan):
+ * Case B — creates with a DB-generated uuidv7() id: insert, read the id from
+ * returning(), then audit — all in one tx, so a failed audit rolls the create
+ * back too (no manual-remediation orphan):
  *
- *   const [row] = await db.insert(brands).values({ ...data, orgId: ctx.orgId }).returning();
- *   await recordAuditEvent(ctx, { action: "brand.create", entityType: "brand", entityId: row.id });
+ *   return await db.transaction(async (tx) => {
+ *     const [row] = await tx.insert(brands).values({ ...data, orgId: ctx.orgId }).returning();
+ *     await buildAuditInsert(ctx, { action: "brand.create", entityType: "brand", entityId: row.id }, tx);
+ *     return row;
+ *   });
  *
- * For high-stakes creates (credit_ledger) that residual is unacceptable —
- * use a single-statement CTE (db.$with insert → audit insert selecting from
- * it); re-verify the API against the installed drizzle in the credits PR
- * (AGENTS.md §3).
+ * (High-stakes creates like credit_ledger get the same tx treatment; re-verify
+ * the API against the installed drizzle in the credits PR — AGENTS.md §3.)
  */
-export function buildAuditInsert(ctx: AuthCtx, event: OrgAuditEvent) {
+
+/** A drizzle executor — the module `db`, or an interactive transaction handle. */
+type AuditExecutor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+export function buildAuditInsert(
+  ctx: AuthCtx,
+  event: OrgAuditEvent,
+  executor: AuditExecutor = db,
+) {
   const e = orgAuditEventSchema.parse(event);
-  return db.insert(auditLog).values({
+  return executor.insert(auditLog).values({
     orgId: ctx.orgId,
     actorType: ctx.role === "system" ? "system" : "member",
     actorId: ctx.role === "system" ? ctx.jobName : ctx.memberId,
@@ -102,8 +116,9 @@ export function buildAuditInsert(ctx: AuthCtx, event: OrgAuditEvent) {
 
 /**
  * Standalone executing form of buildAuditInsert, for mutations that happen
- * outside a db.batch (Case B above, or better-auth API calls). Throws on
- * invalid input or a failed insert.
+ * outside a transaction (better-auth API calls, or single-statement mutations
+ * where an atomic audit isn't warranted). Throws on invalid input or a failed
+ * insert.
  */
 export async function recordAuditEvent(
   ctx: AuthCtx,

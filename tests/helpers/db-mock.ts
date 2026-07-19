@@ -62,9 +62,9 @@ export type UpdateCall = { table: unknown; set: unknown; where?: SQL };
 
 /**
  * update() mock wired onto `updateFn`, capturing `.set()`/`.where()`.
- * `.returning()` resolves to `returningRows` (a Promise, so it slots into a
- * `db.batch([...])` array — see `makeBatch`). Empty `returningRows` models a
- * 0-row update (row not in the caller's org → NotFound).
+ * `.returning()` resolves to `returningRows`. Empty `returningRows` models a
+ * 0-row update (row not in the caller's org → NotFound). Awaited directly
+ * inside the interactive-transaction template (see `makeTransaction`).
  */
 export function captureUpdate(
   updateFn: Mock,
@@ -94,8 +94,8 @@ export type DeleteCall = { table: unknown; where?: SQL };
 
 /**
  * delete() mock wired onto `deleteFn`, capturing `.where()`. `.returning()`
- * resolves to `returningRows` (slots into a `db.batch([...])` array). Empty
- * `returningRows` models a 0-row delete (row not in the caller's org → NotFound).
+ * resolves to `returningRows`. Empty `returningRows` models a 0-row delete
+ * (row not in the caller's org → NotFound).
  */
 export function captureDelete(
   deleteFn: Mock,
@@ -117,14 +117,16 @@ export function captureDelete(
 }
 
 /**
- * batch() mock: `db.batch([...])` resolves each statement (the atomic Case-A
- * template in dal/audit.ts pairs an update's `.returning()` with an audit
- * insert). Statements are already thenables here, so awaiting them all mirrors
- * the driver's all-or-nothing resolution.
+ * transaction() mock: `db.transaction(async (tx) => …)` invokes the callback
+ * with `tx` — an object exposing the same insert/update/delete/select spies as
+ * the mocked `db` — and resolves to its return value. Models the interactive-
+ * transaction Case-A template in dal/audit.ts (mutation + audit in one tx). A
+ * throw inside the callback rejects the returned promise, mirroring a rollback
+ * (and, per the template, no audit row is written when the throw precedes it).
  */
-export function makeBatch(batchFn: Mock) {
-  batchFn.mockImplementation((statements: unknown[]) =>
-    Promise.all(statements),
+export function makeTransaction(transactionFn: Mock, tx: unknown) {
+  transactionFn.mockImplementation((cb: (tx: unknown) => unknown) =>
+    Promise.resolve(cb(tx)),
   );
 }
 

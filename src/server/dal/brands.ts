@@ -109,7 +109,7 @@ type BrandUpdateFields = Partial<{
  * and the action does the §7 step-4 scoped fetch (getBrandById), so
  * cross-org/nonexistent ids 404 before any write; the org+id scope here is
  * belt-and-suspenders (§6.4). Case A (dal/audit.ts): the id is known up-front,
- * so the update and its audit run as one atomic db.batch.
+ * so the update and its audit run in one interactive transaction.
  */
 async function applyBrandUpdate(
   ctx: AuthCtx,
@@ -118,23 +118,27 @@ async function applyBrandUpdate(
   audit: { action: string; metadata?: OrgAuditEvent["metadata"] },
 ) {
   assertBrandAccess(ctx, brandId);
-  const [updated] = await db.batch([
-    db
+  return await db.transaction(async (tx) => {
+    const updated = await tx
       .update(brands)
       .set(set)
       .where(and(orgScope(ctx, brands), eq(brands.id, brandId)))
-      .returning({ id: brands.id }),
-    buildAuditInsert(ctx, {
-      action: audit.action,
-      entityType: "brand",
-      entityId: brandId,
-      metadata: audit.metadata,
-    }),
-  ]);
-  // 0 rows: a genuine race (deleted between the scoped fetch and here) — the
-  // accepted Case-A residual leaves a no-op audit row.
-  if (updated.length === 0) throw new NotFoundError("brand", brandId);
-  return updated[0];
+      .returning({ id: brands.id });
+    // 0 rows: a genuine race (deleted between the scoped fetch and here).
+    // Throwing here rolls the tx back before the audit insert — no orphan.
+    if (updated.length === 0) throw new NotFoundError("brand", brandId);
+    await buildAuditInsert(
+      ctx,
+      {
+        action: audit.action,
+        entityType: "brand",
+        entityId: brandId,
+        metadata: audit.metadata,
+      },
+      tx,
+    );
+    return updated[0];
+  });
 }
 
 /** Update a brand's name + timezone (B1.2). */

@@ -39,6 +39,9 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 !.env.example
+!.env.production.example
+# deploy.env.example holds no secrets (compose interpolation template) and does
+# not match .env* — it is committed as-is.
 
 # vercel
 .vercel

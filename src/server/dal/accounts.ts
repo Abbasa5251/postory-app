@@ -165,7 +165,9 @@ export async function insertSocialAccount(
  * sync (reconnect or the manual Refresh, #30). Org-scoped by
  * (org_id, zernio_account_id) so it can only ever touch the caller's own
  * account. Case A (dal/audit.ts): id known (the external zernio_account_id),
- * update + audit run as one atomic batch. Returns whether a row was updated.
+ * update + audit run in one interactive transaction. The sync is audited
+ * unconditionally (even on a 0-row match), so both statements always run — no
+ * early return inside the tx. Returns whether a row was updated.
  */
 export async function syncSocialAccount(
   ctx: AuthCtx,
@@ -178,8 +180,8 @@ export async function syncSocialAccount(
   },
 ) {
   assertBrandAccess(ctx, brandId);
-  const [updated] = await db.batch([
-    db
+  return await db.transaction(async (tx) => {
+    const updated = await tx
       .update(socialAccounts)
       .set({
         handle: input.handle,
@@ -193,22 +195,27 @@ export async function syncSocialAccount(
           eq(socialAccounts.zernioAccountId, input.zernioAccountId),
         ),
       )
-      .returning({ id: socialAccounts.id }),
-    buildAuditInsert(ctx, {
-      action: "account.sync",
-      entityType: "social_account",
-      entityId: input.zernioAccountId,
-      metadata: { status: input.status },
-    }),
-  ]);
-  return updated.length > 0;
+      .returning({ id: socialAccounts.id });
+    await buildAuditInsert(
+      ctx,
+      {
+        action: "account.sync",
+        entityType: "social_account",
+        entityId: input.zernioAccountId,
+        metadata: { status: input.status },
+      },
+      tx,
+    );
+    return updated.length > 0;
+  });
 }
 
 /**
  * Hard-delete a connected account (B3 disconnect, #31 — ADR-009 re-amended:
  * disconnect removes the row, there is no `disconnected` status). Org-scoped by
  * (org_id, id). Case A (dal/audit.ts): delete + `account.disconnect` audit run
- * as one atomic batch. 0 rows → NotFoundError (raced). The Zernio-side
+ * in one interactive transaction. 0 rows → NotFoundError (raced), thrown before
+ * the audit insert so the tx rolls back with no orphan. The Zernio-side
  * disconnect (which stops account-day billing) is the action's job, before this
  * — the DAL stays DB-only (§6).
  */
@@ -218,8 +225,8 @@ export async function deleteSocialAccountById(
   accountId: string,
 ) {
   assertBrandAccess(ctx, brandId);
-  const [deleted] = await db.batch([
-    db
+  return await db.transaction(async (tx) => {
+    const deleted = await tx
       .delete(socialAccounts)
       .where(
         and(
@@ -228,13 +235,17 @@ export async function deleteSocialAccountById(
           eq(socialAccounts.id, accountId),
         ),
       )
-      .returning({ id: socialAccounts.id }),
-    buildAuditInsert(ctx, {
-      action: "account.disconnect",
-      entityType: "social_account",
-      entityId: accountId,
-    }),
-  ]);
-  if (deleted.length === 0) throw new NotFoundError("account", accountId);
-  return deleted[0];
+      .returning({ id: socialAccounts.id });
+    if (deleted.length === 0) throw new NotFoundError("account", accountId);
+    await buildAuditInsert(
+      ctx,
+      {
+        action: "account.disconnect",
+        entityType: "social_account",
+        entityId: accountId,
+      },
+      tx,
+    );
+    return deleted[0];
+  });
 }

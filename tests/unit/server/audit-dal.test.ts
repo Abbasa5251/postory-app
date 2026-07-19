@@ -7,10 +7,9 @@ import {
 } from "@/server/dal/audit";
 import type { MemberCtx, SystemCtx } from "@/server/dal/types";
 
-// The db client is mocked, not imported: the real @/db/db constructs a neon()
-// client at module load (no URL under SKIP_ENV_VALIDATION), and the AGENTS.md
-// §6 boundary rule forbids importing it outside the DAL — vi.hoisted keeps a
-// handle on the mock without an import.
+// The db client is mocked, not imported: the real @/db/db constructs a pg Pool
+// at module load, and the AGENTS.md §6 boundary rule forbids importing it
+// outside the DAL — vi.hoisted keeps a handle on the mock without an import.
 const { insert } = vi.hoisted(() => ({ insert: vi.fn() }));
 vi.mock("@/db/db", () => ({ db: { insert } }));
 
@@ -160,7 +159,7 @@ describe("recordAuditEvent / buildAuditInsert", () => {
     ).rejects.toThrow("db down");
   });
 
-  it("buildAuditInsert builds the insert without needing an await (batch composition)", () => {
+  it("buildAuditInsert builds the insert on the module db by default", () => {
     buildAuditInsert(memberCtx, {
       action: "post.approve",
       entityType: "post",
@@ -168,5 +167,20 @@ describe("recordAuditEvent / buildAuditInsert", () => {
     });
     expect(insert).toHaveBeenCalledExactlyOnceWith(auditLog);
     expect(values).toHaveBeenCalledOnce();
+  });
+
+  it("buildAuditInsert routes the insert through a provided tx executor (interactive-transaction composition)", () => {
+    const txValues = vi.fn();
+    const txInsert = vi.fn().mockReturnValue({ values: txValues });
+    // The Case-A template passes the tx handle so the audit row joins the same
+    // transaction as the mutation — the insert must NOT touch the module db.
+    buildAuditInsert(
+      memberCtx,
+      { action: "post.approve", entityType: "post", entityId: "post_1" },
+      { insert: txInsert } as never,
+    );
+    expect(txInsert).toHaveBeenCalledExactlyOnceWith(auditLog);
+    expect(txValues).toHaveBeenCalledOnce();
+    expect(insert).not.toHaveBeenCalled();
   });
 });
