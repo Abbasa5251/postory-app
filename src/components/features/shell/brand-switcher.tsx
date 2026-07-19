@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -92,21 +93,23 @@ export function BrandSwitcher({
             align="start"
             sideOffset={4}
           >
-            <DropdownMenuLabel className="text-xs text-muted-foreground">
-              Brands
-            </DropdownMenuLabel>
-            {brands.map((brand) => (
-              <DropdownMenuItem
-                key={brand.id}
-                onClick={() =>
-                  router.push(`/brands/${brand.id}/${currentSection}`)
-                }
-              >
-                {badge(brand.id, brand.name, 22)}
-                <span className="flex-1 truncate">{brand.name}</span>
-                {brand.id === active?.id && <Check className="size-4" />}
-              </DropdownMenuItem>
-            ))}
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className="text-xs text-muted-foreground">
+                Brands
+              </DropdownMenuLabel>
+              {brands.map((brand) => (
+                <DropdownMenuItem
+                  key={brand.id}
+                  onClick={() =>
+                    router.push(`/brands/${brand.id}/${currentSection}`)
+                  }
+                >
+                  {badge(brand.id, brand.name, 22)}
+                  <span className="flex-1 truncate">{brand.name}</span>
+                  {brand.id === active?.id && <Check className="size-4" />}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               render={<Link href="/brands" />}
