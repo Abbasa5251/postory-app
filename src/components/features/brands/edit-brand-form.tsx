@@ -24,17 +24,18 @@ export function EditBrandForm({
   brand: { id: string; name: string; timezone: string };
 }) {
   const router = useRouter();
+  const [name, setName] = useState(brand.name);
   const [timezone, setTimezone] = useState(brand.timezone);
   const { pending, message, fieldErrors, run } = useActionForm(updateBrand, {
     onSuccess: () => {
       toast.success("Brand updated");
-      router.push("/brands");
+      // Stay on settings and re-render server data (name shows in the sidebar).
+      router.refresh();
     },
   });
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const name = String(new FormData(event.currentTarget).get("name") ?? "");
     void run({ id: brand.id, name, timezone });
   }
 
@@ -45,9 +46,9 @@ export function EditBrandForm({
           <Label htmlFor="brand-name">Workspace name</Label>
           <Input
             id="brand-name"
-            name="name"
             required
-            defaultValue={brand.name}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
             disabled={pending}
             aria-invalid={!!fieldErrors?.name}
           />
@@ -65,7 +66,7 @@ export function EditBrandForm({
       {message && <p className="text-sm text-destructive">{message}</p>}
 
       <div className="flex justify-end gap-2">
-        <Button type="submit" disabled={pending || !timezone}>
+        <Button type="submit" disabled={pending || !name.trim() || !timezone}>
           {pending && <Spinner />}
           Save changes
         </Button>

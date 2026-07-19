@@ -1,6 +1,7 @@
 "use client";
 
 import { Plus } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -39,8 +40,21 @@ function browserTimeZone(): string {
  * surfaces the typed `ActionResult` (field errors inline, a general message
  * otherwise). No Zernio work: the profile is provisioned lazily in B3.
  */
-export function NewBrandDialog() {
-  const [open, setOpen] = useState(false);
+export function NewBrandDialog({
+  open: openProp,
+  onOpenChange,
+  showTrigger = true,
+}: {
+  /** Controlled open state (e.g. opened from the sidebar brand switcher). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Hide the built-in button when another surface opens the dialog. */
+  showTrigger?: boolean;
+} = {}) {
+  const router = useRouter();
+  const isControlled = openProp !== undefined;
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = isControlled ? openProp : internalOpen;
   const [timezone, setTimezone] = useState(browserTimeZone);
   const { pending, message, fieldErrors, reset, run } = useActionForm(
     createBrand,
@@ -48,9 +62,17 @@ export function NewBrandDialog() {
       onSuccess: (data) => {
         toast.success(`Brand "${data.name}" created`);
         setOpen(false);
+        // Land on the new brand so it's active in the shell (and the sidebar
+        // switcher/list refresh via the re-run layout).
+        router.push(`/brands/${data.id}/dashboard`);
       },
     },
   );
+
+  function setOpen(next: boolean) {
+    if (isControlled) onOpenChange?.(next);
+    else setInternalOpen(next);
+  }
 
   // Reset transient form state whenever the dialog closes (handled here, not
   // in an effect — it's a user event, not derived state).
@@ -70,14 +92,16 @@ export function NewBrandDialog() {
 
   return (
     <AlertDialog open={open} onOpenChange={handleOpenChange}>
-      <AlertDialogTrigger
-        render={
-          <Button>
-            <Plus />
-            New brand
-          </Button>
-        }
-      />
+      {showTrigger && (
+        <AlertDialogTrigger
+          render={
+            <Button>
+              <Plus />
+              New brand
+            </Button>
+          }
+        />
+      )}
 
       <AlertDialogContent>
         <form onSubmit={handleSubmit} className="flex flex-col gap-6">

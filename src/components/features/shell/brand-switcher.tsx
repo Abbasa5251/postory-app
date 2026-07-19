@@ -1,8 +1,9 @@
 "use client";
 
 import { Check, ChevronsUpDown, Plus } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { NewBrandDialog } from "@/components/features/brands/new-brand-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,7 +35,7 @@ export function BrandSwitcher({
   activeBrandId,
   orgName,
   currentSection,
-  role
+  role,
 }: {
   brands: BrandSummary[];
   activeBrandId: string | null;
@@ -44,6 +45,8 @@ export function BrandSwitcher({
   role: Role;
 }) {
   const router = useRouter();
+  const [createOpen, setCreateOpen] = useState(false);
+  const canCreate = role === "owner" || role === "admin";
   const active =
     brands.find((b) => b.id === activeBrandId) ?? brands[0] ?? null;
 
@@ -64,6 +67,13 @@ export function BrandSwitcher({
   return (
     <SidebarMenu>
       <SidebarMenuItem>
+        {canCreate && (
+          <NewBrandDialog
+            open={createOpen}
+            onOpenChange={setCreateOpen}
+            showTrigger={false}
+          />
+        )}
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -113,13 +123,13 @@ export function BrandSwitcher({
                 </DropdownMenuItem>
               ))}
             </DropdownMenuGroup>
-            {(role === "owner" || role === "admin") && (
+            {canCreate && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
-                  render={<Link href="/brands" />}
                   className="text-primary"
-                  >
+                  onClick={() => setCreateOpen(true)}
+                >
                   <Plus className="size-4" />
                   New brand
                 </DropdownMenuItem>
