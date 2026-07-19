@@ -18,5 +18,12 @@ export default async function OnboardingPage() {
     redirect("/dashboard");
   }
 
-  return <OnboardingCard userName={session.user.name} />;
+  return (
+    <div className="flex w-full max-w-md flex-col items-center gap-4">
+      <OnboardingCard />
+      <p className="text-center text-xs text-muted-foreground">
+        Signed in as {session.user.email}
+      </p>
+    </div>
+  );
 }

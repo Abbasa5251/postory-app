@@ -21,7 +21,7 @@ import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth-client";
 
-export function OnboardingCard({ userName }: { userName: string }) {
+export function OnboardingCard() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
@@ -55,10 +55,13 @@ export function OnboardingCard({ userName }: { userName: string }) {
   return (
     <Card className="w-full max-w-md">
       <CardHeader>
-        <CardTitle>Welcome, {userName}</CardTitle>
+        <CardTitle className="font-heading text-xl">
+          Create your organization
+        </CardTitle>
         <CardDescription>
-          Create your agency&apos;s workspace to get started, or accept a
-          pending invitation below.
+          This is your agency&apos;s home in Postory — your team, billing, and
+          every client brand live under it. Or accept a pending invitation
+          below.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
