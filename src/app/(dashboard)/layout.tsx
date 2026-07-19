@@ -1,12 +1,18 @@
 import { ensureSession } from "@better-auth-ui/react/server";
 import { HydrationBoundary, dehydrate } from "@tanstack/react-query";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { OrganizationSwitcher } from "@/components/auth/organization/organization-switcher";
-import { UserButton } from "@/components/auth/user/user-button";
+import { AppSidebar } from "@/components/features/shell/app-sidebar";
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
 import { getQueryClient } from "@/lib/query-client";
 import { recoverActiveOrg } from "@/server/auth/active-org";
 import { auth } from "@/server/auth/auth";
+import { getAuthCtx } from "@/server/auth/context";
+import { listBrands } from "@/server/dal/brands";
 
 // THE server-side gate (AGENTS.md §7 — client-side guards are UX sugar):
 // no session → sign-in; no active org → recover it from the user's memberships
@@ -31,20 +37,37 @@ export default async function DashboardLayout({
     redirect(recovery === "recovered" ? "/dashboard" : "/onboarding");
   }
 
+  // Shell data (§5 thin layout): the gate above guarantees getAuthCtx resolves.
+  // Brands feed the sidebar's brand switcher + nav (org-scoped, creator-narrowed).
+  const ctx = await getAuthCtx();
+  const [brands, organization, cookieStore] = await Promise.all([
+    listBrands(ctx),
+    auth.api.getFullOrganization({ headers: requestHeaders }),
+    cookies(),
+  ]);
+  const defaultOpen = cookieStore.get("sidebar_state")?.value !== "false";
+
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>
-      <div className="flex min-h-svh flex-col">
-        <header className="flex items-center justify-between gap-4 border-b px-4 py-2">
-          <div className="flex items-center gap-4">
-            <span className="font-heading text-lg font-semibold">POSTORY</span>
-            {/* Org-required app (D1/A3): hide the "personal account" entry so a
-                member can't clear their active org into a null (no-org) state. */}
-            <OrganizationSwitcher hidePersonal />
+      <SidebarProvider defaultOpen={defaultOpen}>
+        <AppSidebar
+          brands={brands.map((b) => ({ id: b.id, name: b.name }))}
+          orgName={organization?.name ?? "POSTORY"}
+        />
+        <SidebarInset>
+          {/* Mobile-only top bar: the desktop sidebar is always visible (mockup
+              has no top bar); the trigger opens the sheet drawer on mobile. */}
+          <header className="flex h-12 items-center gap-2 border-b px-4 md:hidden">
+            <SidebarTrigger />
+            <span className="font-heading text-base font-semibold">
+              Postory
+            </span>
+          </header>
+          <div className="mx-auto w-full max-w-6xl px-6 py-8 md:px-10">
+            {children}
           </div>
-          <UserButton size="icon" />
-        </header>
-        <main className="flex flex-1 flex-col p-6">{children}</main>
-      </div>
+        </SidebarInset>
+      </SidebarProvider>
     </HydrationBoundary>
   );
 }
