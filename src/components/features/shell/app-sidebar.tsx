@@ -139,7 +139,7 @@ export function AppSidebar({
 
       <SidebarFooter>
         {/* Agency switch for multi-org members (the top switcher is brand-level). */}
-        <OrganizationSwitcher hidePersonal className="w-full" />
+        <OrganizationSwitcher hidePersonal className="w-full justify-between" />
         <UserButton className="w-full" />
       </SidebarFooter>
       <SidebarRail />
