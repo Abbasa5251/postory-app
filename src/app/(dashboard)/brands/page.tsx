@@ -1,3 +1,4 @@
+import { Building2 } from "lucide-react";
 import Link from "next/link";
 import { NewBrandDialog } from "@/components/features/brands/new-brand-dialog";
 import {
@@ -6,6 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { getAuthCtx } from "@/server/auth/context";
 import { listBrands } from "@/server/dal/brands";
 
@@ -26,14 +28,15 @@ export default async function BrandsPage() {
       </div>
 
       {brands.length === 0 ? (
-        <Card className="items-center py-12 text-center">
-          <CardHeader>
-            <CardTitle>No brands yet</CardTitle>
-            <CardDescription>
-              Create your first brand to get started.
-            </CardDescription>
-          </CardHeader>
-        </Card>
+        <EmptyState
+          icon={<Building2 className="size-5" />}
+          title="No brands yet"
+          description={
+            canCreateBrand
+              ? "Create your first client brand to start connecting accounts and composing posts."
+              : "No brands have been created for this agency yet."
+          }
+        />
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {brands.map((brand) => (

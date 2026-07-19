@@ -13,7 +13,8 @@ import { NotFoundError } from "@/server/domain/errors";
 export async function requireBrand(brandId: string) {
   const ctx = await getAuthCtx();
   try {
-    return await getBrandById(ctx, brandId);
+    const brand = await getBrandById(ctx, brandId);
+    return { ctx, brand };
   } catch (error) {
     if (error instanceof NotFoundError) notFound();
     throw error;

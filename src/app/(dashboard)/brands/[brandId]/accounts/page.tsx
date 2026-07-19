@@ -1,8 +1,10 @@
+import { Link2 } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AccountCard } from "@/components/features/accounts/account-card";
 import { ConnectAccountButtons } from "@/components/features/accounts/connect-account-buttons";
 import { RefreshAccountsButton } from "@/components/features/accounts/refresh-accounts-button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { getAuthCtx } from "@/server/auth/context";
 import { listSocialAccounts } from "@/server/dal/accounts";
 import { getBrandById } from "@/server/dal/brands";
@@ -95,9 +97,15 @@ export default async function BrandAccountsPage({
           {canManage && <RefreshAccountsButton brandId={brand.id} />}
         </div>
         {accounts.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No accounts connected yet.
-          </p>
+          <EmptyState
+            icon={<Link2 className="size-5" />}
+            title="No accounts connected yet"
+            description={
+              canManage
+                ? "Connect a social account above to start publishing for this brand."
+                : "An account manager hasn't connected any social accounts for this brand yet."
+            }
+          />
         ) : (
           <ul className="flex flex-col gap-3">
             {accounts.map((account) => (
