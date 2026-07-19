@@ -2,6 +2,7 @@ import { Check } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/features/shell/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { buildSetupChecklist } from "@/lib/setup-checklist";
 import { cn } from "@/lib/utils";
 import { listSocialAccounts } from "@/server/dal/accounts";
 import { listOrgMembers } from "@/server/dal/org";
@@ -24,25 +25,11 @@ export default async function BrandDashboardPage({
     listOrgMembers(ctx).catch(() => []),
   ]);
 
-  const steps = [
-    { label: "Create your first brand", done: true, href: null },
-    {
-      label: "Connect a social account",
-      done: accounts.length > 0,
-      href: `/brands/${brand.id}/accounts`,
-    },
-    {
-      label: "Invite a teammate",
-      done: members.length > 1,
-      href: "/organization/members",
-    },
-    {
-      // Scheduling ships with Epic F — always actionable, never auto-complete yet.
-      label: "Schedule your first post",
-      done: false,
-      href: `/brands/${brand.id}/composer`,
-    },
-  ];
+  const steps = buildSetupChecklist({
+    brandId: brand.id,
+    hasAccounts: accounts.length > 0,
+    hasTeammates: members.length > 1,
+  });
   const doneCount = steps.filter((step) => step.done).length;
   const allDone = doneCount === steps.length;
 

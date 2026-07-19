@@ -14,8 +14,9 @@ services:
       POSTGRES_USER: postory
       POSTGRES_PASSWORD: postory
       POSTGRES_DB: postory
+    # Loopback-only: never expose the DB (fixed dev creds) on the network.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     # Postgres 18 places data in a version subdir; mount the parent (not
     # /var/lib/postgresql/data) per the image's 18+ guidance.
     volumes:
@@ -33,7 +34,7 @@ services:
     environment:
       PG_CONNECTION_STRING: postgres://postory:postory@postgres:5432/postory
     ports:
-      - "4444:4444"
+      - "127.0.0.1:4444:4444"
     depends_on:
       postgres:
         condition: service_healthy

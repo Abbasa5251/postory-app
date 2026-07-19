@@ -1,7 +1,7 @@
 import { neonConfig } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
 import { env } from "@/lib/env/server";
-import { relations } from "./relations";
+import { relations } from "@/db/relations";
 
 // Local dev: when DATABASE_URL points at localhost, route the neon-http driver's
 // fetch at the local-neon-http-proxy container (docker-compose) instead of Neon

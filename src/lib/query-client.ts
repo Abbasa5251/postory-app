@@ -8,12 +8,11 @@ function makeQueryClient() {
   return new QueryClient({
     defaultOptions: {
       queries: {
-        // Keep client data (better-auth-ui org/session hooks in the shell)
-        // cached across navigations instead of refetching each page mount —
-        // those calls are slow round-trips. Only refetch when genuinely stale.
-        staleTime: 5 * 60 * 1000,
-        gcTime: 10 * 60 * 1000,
-        refetchOnWindowFocus: false,
+        // Short freshness only — dedupes rapid navigations without holding
+        // identity-scoped data (auth/session/org hooks share this client) stale
+        // after sign-out or an org switch. Page speed comes from the fast local
+        // DB + per-request getAuthCtx/listBrands memoization, not long caching.
+        staleTime: 60 * 1000,
       },
       dehydrate: {
         // Also dehydrate pending queries so streamed SSR data hydrates.

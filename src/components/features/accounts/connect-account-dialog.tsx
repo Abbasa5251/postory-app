@@ -13,8 +13,13 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import type { PlatformConfig } from "@/lib/platforms/config";
 
-export type ConnectablePlatform = { id: string; label: string; color: string };
+/** The subset of the platform config the picker needs (single source: §4). */
+export type ConnectablePlatform = Pick<
+  PlatformConfig,
+  "id" | "label" | "color"
+>;
 
 /**
  * "Connect account" modal (postory-design "Connections"): a header button that
