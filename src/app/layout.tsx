@@ -20,7 +20,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "POSTORY",
+  title: "Postory",
   description:
     "AI post generation, approvals, scheduling and analytics for brand agencies",
 };

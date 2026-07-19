@@ -29,7 +29,7 @@ import { ac, assertAssignableRole, roles } from "./permissions";
 import { selectInitialOrganizationId } from "./select-initial-org";
 
 export const auth = betterAuth({
-  appName: "POSTORY",
+  appName: "Postory",
   baseURL: env.BETTER_AUTH_URL,
   secret: env.BETTER_AUTH_SECRET,
   // schema must be passed explicitly: drizzle v1 instances created via

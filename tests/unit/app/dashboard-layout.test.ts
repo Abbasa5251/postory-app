@@ -14,7 +14,16 @@ const { redirect } = vi.hoisted(() => ({
   }),
 }));
 
-vi.mock("next/headers", () => ({ headers: vi.fn(async () => new Headers()) }));
+const { getAuthCtx } = vi.hoisted(() => ({ getAuthCtx: vi.fn() }));
+const { listBrands } = vi.hoisted(() => ({ listBrands: vi.fn() }));
+const { getActiveOrgName } = vi.hoisted(() => ({
+  getActiveOrgName: vi.fn(),
+}));
+
+vi.mock("next/headers", () => ({
+  headers: vi.fn(async () => new Headers()),
+  cookies: vi.fn(async () => ({ get: () => undefined })),
+}));
 vi.mock("next/navigation", () => ({ redirect }));
 vi.mock("@better-auth-ui/react/server", () => ({ ensureSession }));
 vi.mock("@tanstack/react-query", () => ({
@@ -24,11 +33,16 @@ vi.mock("@tanstack/react-query", () => ({
 vi.mock("@/lib/query-client", () => ({ getQueryClient: () => ({}) }));
 vi.mock("@/server/auth/auth", () => ({ auth: {} }));
 vi.mock("@/server/auth/active-org", () => ({ recoverActiveOrg }));
-vi.mock("@/components/auth/organization/organization-switcher", () => ({
-  OrganizationSwitcher: () => null,
+vi.mock("@/server/auth/context", () => ({ getAuthCtx }));
+vi.mock("@/server/dal/brands", () => ({ listBrands }));
+vi.mock("@/server/dal/org", () => ({ getActiveOrgName }));
+vi.mock("@/components/features/shell/app-sidebar", () => ({
+  AppSidebar: () => null,
 }));
-vi.mock("@/components/auth/user/user-button", () => ({
-  UserButton: () => null,
+vi.mock("@/components/ui/sidebar", () => ({
+  SidebarProvider: () => null,
+  SidebarInset: () => null,
+  SidebarTrigger: () => null,
 }));
 
 import DashboardLayout from "@/app/(dashboard)/layout";
@@ -41,6 +55,10 @@ const member = (activeOrganizationId: string | null) => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Shell data reads (only reached once the gate passes).
+  getAuthCtx.mockResolvedValue({ orgId: "org_1", role: "owner" });
+  listBrands.mockResolvedValue([]);
+  getActiveOrgName.mockResolvedValue("Acme Agency");
 });
 
 describe("DashboardLayout gate", () => {

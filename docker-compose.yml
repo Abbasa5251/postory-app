@@ -1,0 +1,43 @@
+# Local dev database (perf: replaces ~220ms/query round-trips to Neon us-east-1
+# with ~1-3ms local queries). Postgres 18 is required — the schema uses native
+# uuidv7(). The neon-proxy fronts Postgres with Neon's HTTP protocol so the app's
+# neon-http driver (and db.batch) work locally exactly as against Neon cloud.
+#
+#   npm run db:local:up      # start
+#   npm run db:migrate       # apply migrations (uses .env.local DATABASE_URL)
+#   npm run db:local:down    # stop   (add -v via db:local:reset to wipe data)
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: postory-postgres
+    environment:
+      POSTGRES_USER: postory
+      POSTGRES_PASSWORD: postory
+      POSTGRES_DB: postory
+    # Loopback-only: never expose the DB (fixed dev creds) on the network.
+    ports:
+      - "127.0.0.1:5432:5432"
+    # Postgres 18 places data in a version subdir; mount the parent (not
+    # /var/lib/postgresql/data) per the image's 18+ guidance.
+    volumes:
+      - postory_pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postory -d postory"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+
+  neon-proxy:
+    # Fronts Postgres with Neon's HTTP/WS protocol for the neon-http driver.
+    image: ghcr.io/timowilhelm/local-neon-http-proxy:main
+    container_name: postory-neon-proxy
+    environment:
+      PG_CONNECTION_STRING: postgres://postory:postory@postgres:5432/postory
+    ports:
+      - "127.0.0.1:4444:4444"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postory_pgdata:

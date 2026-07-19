@@ -1,7 +1,8 @@
 import "server-only";
 import { eq } from "drizzle-orm";
+import { cache } from "react";
 import { db } from "@/db/db";
-import { member, user } from "@/db/schemas/auth";
+import { member, organization, user } from "@/db/schemas/auth";
 import type { AuthCtx } from "./types";
 
 /**
@@ -32,6 +33,23 @@ export type OrgMember = {
  * convention. An agency has ≤10 seats (D1), so the whole team is one read; no
  * pagination.
  */
+/**
+ * The active organization's display name — a single-column, single-row read
+ * scoped to ctx.orgId. Much cheaper than better-auth's getFullOrganization
+ * (which also loads members/invitations); the app shell only needs the name.
+ * Memoized per-request (React `cache()`).
+ */
+export const getActiveOrgName = cache(
+  async (ctx: AuthCtx): Promise<string | null> => {
+    const [row] = await db
+      .select({ name: organization.name })
+      .from(organization)
+      .where(eq(organization.id, ctx.orgId))
+      .limit(1);
+    return row?.name ?? null;
+  },
+);
+
 export async function listOrgMembers(ctx: AuthCtx): Promise<OrgMember[]> {
   return db
     .select({

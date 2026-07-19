@@ -36,6 +36,8 @@ const eslintConfig = defineConfig([
     // present in local checkouts; their example code breaks `npm run lint`).
     ".agents/**",
     ".claude/**",
+    // Design-tool mockup export (not app source; its example JS isn't ours).
+    "postory-design/**",
   ]),
   {
     // Vendored better-auth-ui registry components (installed via
@@ -43,6 +45,15 @@ const eslintConfig = defineConfig([
     // to upstream so future registry re-adds stay clean diffs — style rules
     // that upstream doesn't satisfy are relaxed here only.
     files: ["src/components/auth/**"],
+    rules: {
+      "react-hooks/set-state-in-effect": "off",
+    },
+  },
+  {
+    // Vendored shadcn/ui primitives (installed via `npx shadcn add`, base-nova
+    // style) + its use-mobile hook — kept close to upstream so re-adds stay
+    // clean diffs; relax the effect rule the registry doesn't satisfy.
+    files: ["src/components/ui/**", "src/hooks/use-mobile.ts"],
     rules: {
       "react-hooks/set-state-in-effect": "off",
     },

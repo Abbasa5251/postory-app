@@ -1,5 +1,6 @@
 import "server-only";
 import { headers } from "next/headers";
+import { cache } from "react";
 import { isValidRole } from "@/lib/auth/roles";
 import { resolveCreatorBrandIds } from "@/server/dal/brand-members";
 import type { MemberCtx, SystemCtx } from "@/server/dal/types";
@@ -20,8 +21,13 @@ export class UnauthorizedError extends Error {
  * The one place a member tenancy context is built (AGENTS.md §6.3): orgId
  * comes from the better-auth session — client-supplied org/brand ids are
  * never trusted.
+ *
+ * Wrapped in React `cache()` so the many callers in a single request (the
+ * dashboard layout, the page, requireBrand, …) share ONE session +
+ * active-member resolution instead of each re-hitting the auth store — the
+ * memoization is per-request, so it never leaks a ctx across requests/users.
  */
-export async function getAuthCtx(): Promise<MemberCtx> {
+export const getAuthCtx = cache(async (): Promise<MemberCtx> => {
   const h = await headers();
   const session = await auth.api.getSession({ headers: h });
   if (!session?.session.activeOrganizationId) {
@@ -55,7 +61,7 @@ export async function getAuthCtx(): Promise<MemberCtx> {
           )
         : "all",
   };
-}
+});
 
 /**
  * Background jobs only (AGENTS.md §6.7): full brand access, audited as

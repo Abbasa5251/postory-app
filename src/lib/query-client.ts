@@ -8,7 +8,10 @@ function makeQueryClient() {
   return new QueryClient({
     defaultOptions: {
       queries: {
-        // Avoid immediate client refetch of data just streamed from the server.
+        // Short freshness only — dedupes rapid navigations without holding
+        // identity-scoped data (auth/session/org hooks share this client) stale
+        // after sign-out or an org switch. Page speed comes from the fast local
+        // DB + per-request getAuthCtx/listBrands memoization, not long caching.
         staleTime: 60 * 1000,
       },
       dehydrate: {

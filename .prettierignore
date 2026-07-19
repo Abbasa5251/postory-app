@@ -21,3 +21,6 @@ src/db/migrations/
 # installed agent skills (vendored third-party content, untracked)
 .agents/
 .claude/
+
+# design-tool mockup export (not app source)
+postory-design/
