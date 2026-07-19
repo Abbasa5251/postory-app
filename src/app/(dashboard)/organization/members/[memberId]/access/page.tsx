@@ -50,7 +50,7 @@ export default async function MemberAccessPage({
           href="/organization/members"
           className="text-sm text-muted-foreground hover:underline"
         >
-          ← Members
+          ← Team
         </Link>
         <h1 className="font-heading text-2xl font-semibold">{target.name}</h1>
         <p className="text-sm text-muted-foreground">

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   type AccessMember,
@@ -7,6 +6,7 @@ import {
 import { BrandContactForm } from "@/components/features/brands/brand-contact-form";
 import { BrandVoiceForm } from "@/components/features/brands/brand-voice-form";
 import { EditBrandForm } from "@/components/features/brands/edit-brand-form";
+import { PageHeader } from "@/components/features/shell/page-header";
 import { Separator } from "@/components/ui/separator";
 import { type VoiceProfile, voiceProfileSchema } from "@/lib/validation/brands";
 import { getAuthCtx } from "@/server/auth/context";
@@ -67,21 +67,7 @@ export default async function BrandSettingsPage({
 
   return (
     <div className="flex w-full max-w-xl flex-col gap-8">
-      <div className="flex flex-col gap-1">
-        <Link
-          href="/brands"
-          className="text-sm text-muted-foreground hover:underline"
-        >
-          ← Brands
-        </Link>
-        <h1 className="font-heading text-2xl font-semibold">{brand.name}</h1>
-        <Link
-          href={`/brands/${brand.id}/accounts`}
-          className="text-sm text-muted-foreground hover:underline"
-        >
-          Accounts →
-        </Link>
-      </div>
+      <PageHeader title="Workspace settings" description={brand.name} />
 
       <section className="flex flex-col gap-4">
         <h2 className="font-heading text-lg font-medium">Details</h2>

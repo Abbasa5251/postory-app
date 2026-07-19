@@ -14,11 +14,12 @@ export type AccountCardData = {
 };
 
 /**
- * One connected account (B3). Shows platform, handle, avatar, and health. A
- * `needs_reauth` account gets a Reconnect affordance — a plain form re-running
- * the connect flow for its platform (the callback flips it back to
- * `connected`). Manage controls render only for owner/admin/approver (UX; the
- * route/action gate is enforcement).
+ * One connected account (B3), styled to the postory-design "Connections" grid
+ * card: platform-accented avatar + label + health on top, handle below, manage
+ * actions at the bottom. A `needs_reauth` account gets a Reconnect affordance —
+ * a plain form re-running the connect flow for its platform (the callback flips
+ * it back to `connected`). Manage controls render only for owner/admin/approver
+ * (UX; the route/action gate is enforcement).
  */
 export function AccountCard({
   account,
@@ -29,40 +30,50 @@ export function AccountCard({
   brandId: string;
   canManage: boolean;
 }) {
-  const label = getPlatformConfig(account.platform)?.label ?? account.platform;
+  const config = getPlatformConfig(account.platform);
+  const label = config?.label ?? account.platform;
   const needsReauth = account.status !== "connected";
 
   return (
     <Card>
-      <CardContent className="flex items-center gap-4 py-4">
-        <Avatar>
-          {account.avatarUrl && <AvatarImage src={account.avatarUrl} alt="" />}
-          <AvatarFallback>{label.slice(0, 1).toUpperCase()}</AvatarFallback>
-        </Avatar>
-        <div className="flex flex-col">
-          <span className="font-medium">{account.handle}</span>
-          <span className="text-sm text-muted-foreground">{label}</span>
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          <AccountStatusBadge status={account.status} />
-          {canManage && needsReauth && (
-            <form
-              method="post"
-              action={`/api/brands/${brandId}/accounts/connect?platform=${account.platform}`}
+      <CardContent className="flex flex-col gap-3 p-4">
+        <div className="flex items-center gap-2.5">
+          <Avatar className="size-7 rounded-lg">
+            {account.avatarUrl && (
+              <AvatarImage src={account.avatarUrl} alt="" />
+            )}
+            <AvatarFallback
+              className="rounded-lg text-xs font-semibold text-white"
+              style={{ background: config?.color ?? "var(--muted-foreground)" }}
             >
-              <Button type="submit" variant="outline" size="sm">
-                Reconnect
-              </Button>
-            </form>
-          )}
-          {canManage && (
+              {label.slice(0, 1).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          <span className="flex-1 truncate text-sm font-semibold">{label}</span>
+          <AccountStatusBadge status={account.status} />
+        </div>
+
+        <div className="truncate text-sm font-medium">{account.handle}</div>
+
+        {canManage && (
+          <div className="flex items-center gap-2">
+            {needsReauth && (
+              <form
+                method="post"
+                action={`/api/brands/${brandId}/accounts/connect?platform=${account.platform}`}
+              >
+                <Button type="submit" variant="outline" size="sm">
+                  Reconnect
+                </Button>
+              </form>
+            )}
             <DisconnectAccountButton
               brandId={brandId}
               accountId={account.id}
               handle={account.handle}
             />
-          )}
-        </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

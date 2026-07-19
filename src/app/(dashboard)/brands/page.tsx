@@ -1,6 +1,7 @@
 import { Building2 } from "lucide-react";
 import Link from "next/link";
 import { NewBrandDialog } from "@/components/features/brands/new-brand-dialog";
+import { PageHeader } from "@/components/features/shell/page-header";
 import {
   Card,
   CardDescription,
@@ -22,10 +23,11 @@ export default async function BrandsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="font-heading text-2xl font-semibold">Brands</h1>
-        {canCreateBrand && <NewBrandDialog />}
-      </div>
+      <PageHeader
+        title="Brands"
+        description="Every client brand in your agency."
+        actions={canCreateBrand ? <NewBrandDialog /> : undefined}
+      />
 
       {brands.length === 0 ? (
         <EmptyState
@@ -42,7 +44,7 @@ export default async function BrandsPage() {
           {brands.map((brand) => (
             <li key={brand.id}>
               <Link
-                href={`/brands/${brand.id}/settings`}
+                href={`/brands/${brand.id}/dashboard`}
                 className="block rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <Card className="transition-colors hover:border-ring">

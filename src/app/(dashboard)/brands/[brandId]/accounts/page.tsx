@@ -1,9 +1,9 @@
 import { Link2 } from "lucide-react";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AccountCard } from "@/components/features/accounts/account-card";
 import { ConnectAccountButtons } from "@/components/features/accounts/connect-account-buttons";
 import { RefreshAccountsButton } from "@/components/features/accounts/refresh-accounts-button";
+import { PageHeader } from "@/components/features/shell/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getAuthCtx } from "@/server/auth/context";
 import { listSocialAccounts } from "@/server/dal/accounts";
@@ -46,19 +46,11 @@ export default async function BrandAccountsPage({
     ctx.role === "owner" || ctx.role === "admin" || ctx.role === "approver";
 
   return (
-    <div className="flex w-full max-w-2xl flex-col gap-8">
-      <div className="flex flex-col gap-1">
-        <Link
-          href={`/brands/${brand.id}/settings`}
-          className="text-sm text-muted-foreground hover:underline"
-        >
-          ← {brand.name}
-        </Link>
-        <h1 className="font-heading text-2xl font-semibold">Accounts</h1>
-        <p className="text-sm text-muted-foreground">
-          Connect the social accounts this brand publishes to.
-        </p>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Connections"
+        description={`Social accounts publishing on behalf of ${brand.name}.`}
+      />
 
       {error && (
         <p
@@ -107,7 +99,7 @@ export default async function BrandAccountsPage({
             }
           />
         ) : (
-          <ul className="flex flex-col gap-3">
+          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {accounts.map((account) => (
               <li key={account.id}>
                 <AccountCard
