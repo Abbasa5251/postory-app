@@ -71,7 +71,7 @@ function useBrandContext(brands: BrandSummary[]) {
 export function AppSidebar({
   brands,
   orgName,
-  role
+  role,
 }: {
   brands: BrandSummary[];
   orgName: string;
@@ -133,7 +133,7 @@ export function AppSidebar({
                       isActive={pathname.startsWith(item.href)}
                       tooltip={item.label}
                       render={<Link href={item.href} />}
-                      >
+                    >
                       <item.icon />
                       <span>{item.label}</span>
                     </SidebarMenuButton>
@@ -143,7 +143,6 @@ export function AppSidebar({
             </SidebarGroup>
           </>
         )}
-
       </SidebarContent>
 
       <SidebarFooter>
