@@ -39,6 +39,19 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+
+  /* Post-status design tokens (mockup): each is a bg + foreground pair used by
+     status badges/dots across posts, approvals, calendar (Epics C/E/F). */
+  --color-status-draft: var(--status-draft);
+  --color-status-draft-foreground: var(--status-draft-foreground);
+  --color-status-pending: var(--status-pending);
+  --color-status-pending-foreground: var(--status-pending-foreground);
+  --color-status-scheduled: var(--status-scheduled);
+  --color-status-scheduled-foreground: var(--status-scheduled-foreground);
+  --color-status-published: var(--status-published);
+  --color-status-published-foreground: var(--status-published-foreground);
+  --color-status-failed: var(--status-failed);
+  --color-status-failed-foreground: var(--status-failed-foreground);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -49,72 +62,101 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.148 0.004 228.8);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.148 0.004 228.8);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.148 0.004 228.8);
-  --primary: oklch(0.5 0.134 242.749);
-  --primary-foreground: oklch(0.977 0.013 236.62);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.963 0.002 197.1);
-  --muted-foreground: oklch(0.56 0.021 213.5);
-  --accent: oklch(0.963 0.002 197.1);
-  --accent-foreground: oklch(0.218 0.008 223.9);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.925 0.005 214.3);
-  --input: oklch(0.925 0.005 214.3);
-  --ring: oklch(0.723 0.014 214.4);
-  --chart-1: oklch(0.865 0.127 207.078);
-  --chart-2: oklch(0.715 0.143 215.221);
-  --chart-3: oklch(0.609 0.126 221.723);
-  --chart-4: oklch(0.52 0.105 223.128);
-  --chart-5: oklch(0.45 0.085 224.283);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.987 0.002 197.1);
-  --sidebar-foreground: oklch(0.148 0.004 228.8);
-  --sidebar-primary: oklch(0.588 0.158 241.966);
-  --sidebar-primary-foreground: oklch(0.977 0.013 236.62);
-  --sidebar-accent: oklch(0.963 0.002 197.1);
-  --sidebar-accent-foreground: oklch(0.218 0.008 223.9);
-  --sidebar-border: oklch(0.925 0.005 214.3);
-  --sidebar-ring: oklch(0.723 0.014 214.4);
+  /* POSTORY design system (postory-design/ mockups). Light is the design;
+     .dark below is a sensible adaptation (the mockup is light-only). Hex kept
+     to match the mockup exactly. Fonts intentionally left as-is (layout.tsx). */
+  --background: #f6f6f4;
+  --foreground: #1c1e21;
+  --card: #fff;
+  --card-foreground: #1c1e21;
+  --popover: #fff;
+  --popover-foreground: #1c1e21;
+  --primary: #0e7c7b;
+  --primary-foreground: #fff;
+  --secondary: #f1f1ef;
+  --secondary-foreground: #1c1e21;
+  --muted: #f1f1ef;
+  --muted-foreground: #6c7076;
+  --accent: #e9f2f1;
+  --accent-foreground: #0b5f5e;
+  --destructive: #c0362c;
+  --border: #e8e7e3;
+  --input: #e8e7e3;
+  --ring: #0e7c7b;
+
+  /* Categorical palette for analytics charts (Epic G). */
+  --chart-1: #0e7c7b;
+  --chart-2: #5b4fc4;
+  --chart-3: #1b7a46;
+  --chart-4: #9a5b00;
+  --chart-5: #d6336c;
+  --radius: 0.75rem;
+  --sidebar: #fff;
+  --sidebar-foreground: #1c1e21;
+  --sidebar-primary: #0e7c7b;
+  --sidebar-primary-foreground: #fff;
+  --sidebar-accent: #e9f2f1;
+  --sidebar-accent-foreground: #0b5f5e;
+  --sidebar-border: #e8e7e3;
+  --sidebar-ring: #0e7c7b;
+
+  /* Post-status badge/dot pairs (bg / foreground). */
+  --status-draft: #f1f1f0;
+  --status-draft-foreground: #5a5f66;
+  --status-pending: #fcf0dc;
+  --status-pending-foreground: #9a5b00;
+  --status-scheduled: #eeebfb;
+  --status-scheduled-foreground: #5b4fc4;
+  --status-published: #e3f3e9;
+  --status-published-foreground: #1b7a46;
+  --status-failed: #fbe9e7;
+  --status-failed-foreground: #c0362c;
 }
 
 .dark {
-  --background: oklch(0.148 0.004 228.8);
-  --foreground: oklch(0.987 0.002 197.1);
-  --card: oklch(0.218 0.008 223.9);
-  --card-foreground: oklch(0.987 0.002 197.1);
-  --popover: oklch(0.218 0.008 223.9);
-  --popover-foreground: oklch(0.987 0.002 197.1);
-  --primary: oklch(0.443 0.11 240.79);
-  --primary-foreground: oklch(0.977 0.013 236.62);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.275 0.011 216.9);
-  --muted-foreground: oklch(0.723 0.014 214.4);
-  --accent: oklch(0.275 0.011 216.9);
-  --accent-foreground: oklch(0.987 0.002 197.1);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.56 0.021 213.5);
-  --chart-1: oklch(0.865 0.127 207.078);
-  --chart-2: oklch(0.715 0.143 215.221);
-  --chart-3: oklch(0.609 0.126 221.723);
-  --chart-4: oklch(0.52 0.105 223.128);
-  --chart-5: oklch(0.45 0.085 224.283);
-  --sidebar: oklch(0.218 0.008 223.9);
-  --sidebar-foreground: oklch(0.987 0.002 197.1);
-  --sidebar-primary: oklch(0.685 0.169 237.323);
-  --sidebar-primary-foreground: oklch(0.293 0.066 243.157);
-  --sidebar-accent: oklch(0.275 0.011 216.9);
-  --sidebar-accent-foreground: oklch(0.987 0.002 197.1);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.56 0.021 213.5);
+  --background: #1c1e21;
+  --foreground: #f6f6f4;
+  --card: #26282b;
+  --card-foreground: #f6f6f4;
+  --popover: #26282b;
+  --popover-foreground: #f6f6f4;
+  --primary: #17a2a0;
+  --primary-foreground: #04211f;
+  --secondary: #2c2f33;
+  --secondary-foreground: #f6f6f4;
+  --muted: #2c2f33;
+  --muted-foreground: #9ba0a6;
+  --accent: #16403e;
+  --accent-foreground: #7fd6d3;
+  --destructive: #e5675c;
+  --border: rgb(255 255 255 / 10%);
+  --input: rgb(255 255 255 / 15%);
+  --ring: #17a2a0;
+  --chart-1: #17a2a0;
+  --chart-2: #8b81e6;
+  --chart-3: #57bd7d;
+  --chart-4: #d9930d;
+  --chart-5: #e57ba3;
+  --sidebar: #202225;
+  --sidebar-foreground: #f6f6f4;
+  --sidebar-primary: #17a2a0;
+  --sidebar-primary-foreground: #04211f;
+  --sidebar-accent: #16403e;
+  --sidebar-accent-foreground: #7fd6d3;
+  --sidebar-border: rgb(255 255 255 / 8%);
+  --sidebar-ring: #17a2a0;
+
+  /* Post-status badge/dot pairs (dark adaptation). */
+  --status-draft: #2c2f33;
+  --status-draft-foreground: #c9cdd2;
+  --status-pending: #3a2e12;
+  --status-pending-foreground: #e7b75c;
+  --status-scheduled: #241f3d;
+  --status-scheduled-foreground: #b3a9f0;
+  --status-published: #12331f;
+  --status-published-foreground: #6fcd8f;
+  --status-failed: #3a1a17;
+  --status-failed-foreground: #f0a79e;
 }
 
 @layer base {

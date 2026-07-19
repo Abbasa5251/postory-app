@@ -32,15 +32,51 @@ export type PlatformConfig = {
    * divergence between our vocabulary and Zernio's is a one-line change here.
    */
   zernioSlug: string;
+  /**
+   * Brand accent color (hex) for UI dots, badges, and preview accents (A7 design
+   * system / postory-design mockups). Single source of truth — UI reads it here
+   * rather than re-hardcoding platform colors.
+   */
+  color: string;
 };
 
 export const PLATFORM_CONFIG: Record<Platform, PlatformConfig> = {
-  instagram: { id: "instagram", label: "Instagram", zernioSlug: "instagram" },
-  facebook: { id: "facebook", label: "Facebook", zernioSlug: "facebook" },
-  tiktok: { id: "tiktok", label: "TikTok", zernioSlug: "tiktok" },
-  linkedin: { id: "linkedin", label: "LinkedIn", zernioSlug: "linkedin" },
-  threads: { id: "threads", label: "Threads", zernioSlug: "threads" },
-  youtube: { id: "youtube", label: "YouTube", zernioSlug: "youtube" },
+  instagram: {
+    id: "instagram",
+    label: "Instagram",
+    zernioSlug: "instagram",
+    color: "#d6336c",
+  },
+  facebook: {
+    id: "facebook",
+    label: "Facebook",
+    zernioSlug: "facebook",
+    color: "#1877f2",
+  },
+  tiktok: {
+    id: "tiktok",
+    label: "TikTok",
+    zernioSlug: "tiktok",
+    color: "#16181c",
+  },
+  linkedin: {
+    id: "linkedin",
+    label: "LinkedIn",
+    zernioSlug: "linkedin",
+    color: "#0a66c2",
+  },
+  threads: {
+    id: "threads",
+    label: "Threads",
+    zernioSlug: "threads",
+    color: "#000000",
+  },
+  youtube: {
+    id: "youtube",
+    label: "YouTube",
+    zernioSlug: "youtube",
+    color: "#e02f2f",
+  },
 };
 
 /** Ordered list for rendering (connect menu, matrices). */
