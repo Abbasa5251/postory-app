@@ -1,8 +1,10 @@
 import { BarChart3, CircleCheck, LayoutGrid, Sparkles } from "lucide-react";
+import { headers } from "next/headers";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { PLATFORM_CONFIG } from "@/lib/platforms/config";
 import { cn } from "@/lib/utils";
+import { auth } from "@/server/auth/auth";
 
 // Public marketing landing (postory-design "Landing page"). Static content;
 // CTAs route to the real auth flows. Uses the shared design tokens.
@@ -130,7 +132,11 @@ function Wordmark({ className }: { className?: string }) {
   );
 }
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  // Personalize CTAs for authenticated visitors (marketing page → dashboard).
+  const session = await auth.api.getSession({ headers: await headers() });
+  const signedIn = Boolean(session);
+
   return (
     <div className="min-h-svh">
       <div className="mx-auto w-full max-w-6xl px-6 sm:px-8">
@@ -148,15 +154,26 @@ export default function LandingPage() {
               For agencies
             </a>
           </nav>
-          <Link
-            href="/auth/sign-in"
-            className="ml-auto text-sm font-semibold sm:ml-0"
-          >
-            Log in
-          </Link>
-          <Link href="/auth/sign-up" className={buttonVariants({ size: "sm" })}>
-            Start free
-          </Link>
+          {signedIn ? (
+            <Link
+              href="/dashboard"
+              className={cn(buttonVariants({ size: "sm" }), "ml-auto sm:ml-0")}
+            >
+              Go to dashboard
+            </Link>
+          ) : (
+            <div className="ml-auto flex items-center gap-4 sm:ml-0">
+              <Link href="/auth/sign-in" className="text-sm font-semibold">
+                Log in
+              </Link>
+              <Link
+                href="/auth/sign-up"
+                className={buttonVariants({ size: "sm" })}
+              >
+                Start free
+              </Link>
+            </div>
+          )}
         </header>
 
         {/* Hero */}
@@ -186,10 +203,10 @@ export default function LandingPage() {
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Link
-              href="/auth/sign-up"
+              href={signedIn ? "/dashboard" : "/auth/sign-up"}
               className={buttonVariants({ size: "lg" })}
             >
-              Start free — no card needed
+              {signedIn ? "Go to dashboard" : "Start free — no card needed"}
             </Link>
             <a
               href="mailto:support@postory.app"
@@ -316,10 +333,10 @@ export default function LandingPage() {
             ))}
           </div>
           <Link
-            href="/auth/sign-up"
+            href={signedIn ? "/dashboard" : "/auth/sign-up"}
             className={cn(buttonVariants({ size: "lg" }), "mt-7")}
           >
-            Start your free trial
+            {signedIn ? "Go to dashboard" : "Start your free trial"}
           </Link>
         </section>
 
