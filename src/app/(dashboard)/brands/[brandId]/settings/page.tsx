@@ -7,7 +7,15 @@ import { BrandContactForm } from "@/components/features/brands/brand-contact-for
 import { BrandVoiceForm } from "@/components/features/brands/brand-voice-form";
 import { EditBrandForm } from "@/components/features/brands/edit-brand-form";
 import { PageHeader } from "@/components/features/shell/page-header";
-import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { brandAccent, brandInitial } from "@/lib/brand-accent";
 import { type VoiceProfile, voiceProfileSchema } from "@/lib/validation/brands";
 import { getAuthCtx } from "@/server/auth/context";
 import { listBrandMemberIds } from "@/server/dal/brand-members";
@@ -66,77 +74,124 @@ export default async function BrandSettingsPage({
   const voiceProfile = parsedVoice.success ? parsedVoice.data : null;
 
   return (
-    <div className="flex w-full max-w-xl flex-col gap-8">
-      <PageHeader title="Workspace settings" description={brand.name} />
+    <div className="flex w-full max-w-3xl flex-col gap-4">
+      <PageHeader
+        title="Workspace settings"
+        description={`Identity, timezone, and brand voice for ${brand.name}.`}
+      />
 
-      <section className="flex flex-col gap-4">
-        <h2 className="font-heading text-lg font-medium">Details</h2>
-        {canEdit ? (
-          <EditBrandForm
-            brand={{ id: brand.id, name: brand.name, timezone: brand.timezone }}
-          />
-        ) : (
-          <dl className="flex flex-col gap-3 text-sm">
-            <div>
-              <dt className="text-muted-foreground">Name</dt>
-              <dd>{brand.name}</dd>
+      <Card>
+        <CardHeader>
+          <CardTitle>Workspace</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-6">
+          <div className="flex items-center gap-4">
+            <span
+              className="flex size-14 shrink-0 items-center justify-center rounded-2xl font-heading text-xl font-bold text-white"
+              style={{ background: brandAccent(brand.id) }}
+            >
+              {brandInitial(brand.name)}
+            </span>
+            <div className="flex flex-col gap-1.5">
+              {/* Logo upload rides the media pipeline (Epic D) — placeholder for now. */}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled
+                className="w-fit"
+                title="Coming soon"
+              >
+                Change logo
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Square PNG or SVG, at least 128×128
+              </span>
             </div>
-            <div>
-              <dt className="text-muted-foreground">Timezone</dt>
-              <dd>{brand.timezone}</dd>
-            </div>
-          </dl>
-        )}
-      </section>
+          </div>
 
-      <Separator />
+          {canEdit ? (
+            <EditBrandForm
+              brand={{
+                id: brand.id,
+                name: brand.name,
+                timezone: brand.timezone,
+              }}
+            />
+          ) : (
+            <dl className="flex flex-col gap-3 text-sm">
+              <div>
+                <dt className="text-muted-foreground">Name</dt>
+                <dd>{brand.name}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Timezone</dt>
+                <dd>{brand.timezone}</dd>
+              </div>
+            </dl>
+          )}
+        </CardContent>
+      </Card>
 
-      <section className="flex flex-col gap-4">
-        <h2 className="font-heading text-lg font-medium">Voice profile</h2>
-        {canEdit ? (
-          <BrandVoiceForm brand={{ id: brand.id, voiceProfile }} />
-        ) : (
-          <ReadOnlyVoice voiceProfile={voiceProfile} />
-        )}
-      </section>
+      <Card>
+        <CardHeader>
+          <CardTitle>Brand voice</CardTitle>
+          <CardDescription>
+            The AI writes every caption against this profile. The closer it
+            matches how the client actually talks, the less editing you&apos;ll
+            do.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {canEdit ? (
+            <BrandVoiceForm brand={{ id: brand.id, voiceProfile }} />
+          ) : (
+            <ReadOnlyVoice voiceProfile={voiceProfile} />
+          )}
+        </CardContent>
+      </Card>
 
-      <Separator />
-
-      <section className="flex flex-col gap-4">
-        <h2 className="font-heading text-lg font-medium">Client contact</h2>
-        {canEdit ? (
-          <BrandContactForm
-            brand={{
-              id: brand.id,
-              clientContactEmail: brand.clientContactEmail,
-            }}
-          />
-        ) : (
-          <dl className="text-sm">
-            <dt className="text-muted-foreground">Client contact email</dt>
-            <dd>{brand.clientContactEmail ?? "—"}</dd>
-          </dl>
-        )}
-      </section>
+      <Card>
+        <CardHeader>
+          <CardTitle>Client contact</CardTitle>
+          <CardDescription>
+            Where approval requests and monthly report links are sent.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {canEdit ? (
+            <BrandContactForm
+              brand={{
+                id: brand.id,
+                clientContactEmail: brand.clientContactEmail,
+              }}
+            />
+          ) : (
+            <dl className="text-sm">
+              <dt className="text-muted-foreground">Client contact email</dt>
+              <dd>{brand.clientContactEmail ?? "—"}</dd>
+            </dl>
+          )}
+        </CardContent>
+      </Card>
 
       {access && (
-        <>
-          <Separator />
-          <section className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1">
-              <h2 className="font-heading text-lg font-medium">Access</h2>
-              <p className="text-sm text-muted-foreground">
-                Creators see only the brands they&apos;re assigned to. Owners,
-                admins, and approvers see every brand.
-              </p>
-            </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Access</CardTitle>
+            <CardDescription>
+              Creators see only the brands they&apos;re assigned to. Owners,
+              admins, and approvers see every brand.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
             <BrandAccessSection
               brandId={brand.id}
               members={access.members}
               assignedMemberIds={access.assignedMemberIds}
             />
-          </section>
-        </>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

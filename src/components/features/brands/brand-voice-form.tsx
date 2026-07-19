@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { useActionForm } from "@/hooks/use-action-form";
-import { linesToList, parseHashtags } from "@/lib/text";
+import { parseHashtags } from "@/lib/text";
 import type { VoiceProfile } from "@/lib/validation/brands";
 import { updateBrandVoice } from "@/server/actions/brands";
 
@@ -29,10 +29,19 @@ export function BrandVoiceForm({
   const router = useRouter();
   const vp = brand.voiceProfile;
   const [tone, setTone] = useState(vp?.tone ?? "");
-  const [bannedWords, setBannedWords] = useState(
-    (vp?.bannedWords ?? []).join("\n"),
+  const [bannedWords, setBannedWords] = useState<string[]>(
+    vp?.bannedWords ?? [],
   );
+  const [bannedDraft, setBannedDraft] = useState("");
   const [hashtags, setHashtags] = useState((vp?.hashtags ?? []).join("\n"));
+
+  function addBannedWord() {
+    const word = bannedDraft.trim();
+    if (word && !bannedWords.includes(word)) {
+      setBannedWords((prev) => [...prev, word]);
+    }
+    setBannedDraft("");
+  }
   const [samplePosts, setSamplePosts] = useState<string[]>(
     vp?.samplePosts ?? [],
   );
@@ -52,11 +61,17 @@ export function BrandVoiceForm({
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // Flush any half-typed banned word so it isn't lost on submit.
+    const draft = bannedDraft.trim();
+    const banned =
+      draft && !bannedWords.includes(draft)
+        ? [...bannedWords, draft]
+        : bannedWords;
     void run({
       id: brand.id,
       voiceProfile: {
         tone,
-        bannedWords: linesToList(bannedWords),
+        bannedWords: banned,
         hashtags: parseHashtags(hashtags),
         samplePosts: samplePosts.map((p) => p.trim()).filter(Boolean),
       },
@@ -81,16 +96,46 @@ export function BrandVoiceForm({
       </Field>
 
       <Field>
-        <Label htmlFor="voice-banned">Banned words</Label>
-        <Textarea
-          id="voice-banned"
-          value={bannedWords}
-          onChange={(e) => setBannedWords(e.target.value)}
-          placeholder={"One per line\ncheap\nlimited time only"}
-          disabled={pending}
-          rows={3}
-        />
-        <FieldDescription>One per line.</FieldDescription>
+        <Label htmlFor="voice-banned">Banned words &amp; phrases</Label>
+        <div className="flex flex-wrap items-center gap-2">
+          {bannedWords.map((word) => (
+            <span
+              key={word}
+              className="inline-flex items-center gap-1.5 rounded-full bg-muted py-1 pr-1.5 pl-3 text-sm"
+            >
+              {word}
+              <button
+                type="button"
+                aria-label={`Remove ${word}`}
+                disabled={pending}
+                onClick={() =>
+                  setBannedWords((prev) => prev.filter((w) => w !== word))
+                }
+                className="flex size-4 items-center justify-center rounded-full text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+              >
+                <X className="size-3" />
+              </button>
+            </span>
+          ))}
+          <input
+            id="voice-banned"
+            value={bannedDraft}
+            onChange={(e) => setBannedDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === ",") {
+                e.preventDefault();
+                addBannedWord();
+              }
+            }}
+            onBlur={addBannedWord}
+            placeholder="Add a word…"
+            disabled={pending}
+            className="min-w-28 flex-1 rounded-full border border-dashed border-input bg-transparent px-3 py-1 text-sm outline-none focus:border-ring"
+          />
+        </div>
+        <FieldDescription>
+          Words and phrases the AI must never use. Press Enter to add.
+        </FieldDescription>
       </Field>
 
       <Field>

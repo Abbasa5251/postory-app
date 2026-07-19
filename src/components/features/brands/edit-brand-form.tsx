@@ -40,25 +40,27 @@ export function EditBrandForm({
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      <Field data-invalid={!!fieldErrors?.name}>
-        <Label htmlFor="brand-name">Name</Label>
-        <Input
-          id="brand-name"
-          name="name"
-          required
-          defaultValue={brand.name}
-          disabled={pending}
-          aria-invalid={!!fieldErrors?.name}
-        />
-        <FieldError>{fieldErrors?.name?.[0]}</FieldError>
-      </Field>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field data-invalid={!!fieldErrors?.name}>
+          <Label htmlFor="brand-name">Workspace name</Label>
+          <Input
+            id="brand-name"
+            name="name"
+            required
+            defaultValue={brand.name}
+            disabled={pending}
+            aria-invalid={!!fieldErrors?.name}
+          />
+          <FieldError>{fieldErrors?.name?.[0]}</FieldError>
+        </Field>
 
-      <BrandTimezoneField
-        value={timezone}
-        onValueChange={setTimezone}
-        disabled={pending}
-        error={fieldErrors?.timezone?.[0]}
-      />
+        <BrandTimezoneField
+          value={timezone}
+          onValueChange={setTimezone}
+          disabled={pending}
+          error={fieldErrors?.timezone?.[0]}
+        />
+      </div>
 
       {message && <p className="text-sm text-destructive">{message}</p>}
 
