@@ -31,6 +31,7 @@ import {
   SidebarRail,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
+import type { Role } from "@/lib/auth/roles";
 import { type BrandSummary, BrandSwitcher } from "./brand-switcher";
 
 /** Brand-scoped nav (mockup order). `section` is the sub-path under the brand. */
@@ -43,7 +44,7 @@ const BRAND_NAV: { section: string; label: string; icon: LucideIcon }[] = [
   { section: "analytics", label: "Analytics", icon: BarChart3 },
   { section: "accounts", label: "Connections", icon: Link2 },
   { section: "media", label: "Media library", icon: ImageIcon },
-  { section: "settings", label: "Workspace settings", icon: Settings2 },
+  { section: "settings", label: "Brand settings", icon: Settings2 },
 ];
 
 /** Org-level nav (agency-wide). */
@@ -70,9 +71,11 @@ function useBrandContext(brands: BrandSummary[]) {
 export function AppSidebar({
   brands,
   orgName,
+  role
 }: {
   brands: BrandSummary[];
   orgName: string;
+  role: Role;
 }) {
   const { pathname, activeBrandId, section } = useBrandContext(brands);
 
@@ -88,6 +91,7 @@ export function AppSidebar({
             activeBrandId={activeBrandId}
             orgName={orgName}
             currentSection={section}
+            role={role}
           />
         )}
       </SidebarHeader>
@@ -116,25 +120,30 @@ export function AppSidebar({
           </SidebarGroup>
         )}
 
-        <SidebarSeparator />
+        {(role === "owner" || role === "admin" || role === "approver") && (
+          <>
+            <SidebarSeparator />
 
-        <SidebarGroup>
-          <SidebarGroupLabel>Agency</SidebarGroupLabel>
-          <SidebarMenu>
-            {ORG_NAV.map((item) => (
-              <SidebarMenuItem key={item.href}>
-                <SidebarMenuButton
-                  isActive={pathname.startsWith(item.href)}
-                  tooltip={item.label}
-                  render={<Link href={item.href} />}
-                >
-                  <item.icon />
-                  <span>{item.label}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
-        </SidebarGroup>
+            <SidebarGroup>
+              <SidebarGroupLabel>Agency</SidebarGroupLabel>
+              <SidebarMenu>
+                {ORG_NAV.map((item) => (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton
+                      isActive={pathname.startsWith(item.href)}
+                      tooltip={item.label}
+                      render={<Link href={item.href} />}
+                      >
+                      <item.icon />
+                      <span>{item.label}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroup>
+          </>
+        )}
+
       </SidebarContent>
 
       <SidebarFooter>

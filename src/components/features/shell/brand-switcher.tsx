@@ -17,6 +17,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import type { Role } from "@/lib/auth/roles";
 import { brandAccent, brandInitial } from "@/lib/brand-accent";
 
 export type BrandSummary = { id: string; name: string };
@@ -33,12 +34,14 @@ export function BrandSwitcher({
   activeBrandId,
   orgName,
   currentSection,
+  role
 }: {
   brands: BrandSummary[];
   activeBrandId: string | null;
   orgName: string;
   /** The brand sub-route (e.g. "dashboard") to preserve when switching. */
   currentSection: string;
+  role: Role;
 }) {
   const router = useRouter();
   const active =
@@ -110,14 +113,18 @@ export function BrandSwitcher({
                 </DropdownMenuItem>
               ))}
             </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              render={<Link href="/brands" />}
-              className="text-primary"
-            >
-              <Plus className="size-4" />
-              New brand
-            </DropdownMenuItem>
+            {(role === "owner" || role === "admin") && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  render={<Link href="/brands" />}
+                  className="text-primary"
+                  >
+                  <Plus className="size-4" />
+                  New brand
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>

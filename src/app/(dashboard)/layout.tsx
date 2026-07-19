@@ -54,6 +54,7 @@ export default async function DashboardLayout({
         <AppSidebar
           brands={brands.map((b) => ({ id: b.id, name: b.name }))}
           orgName={orgName ?? "POSTORY"}
+          role={ctx.role}
         />
         <SidebarInset>
           {/* Mobile-only top bar: the desktop sidebar is always visible (mockup
