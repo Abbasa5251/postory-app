@@ -13,6 +13,7 @@ import { recoverActiveOrg } from "@/server/auth/active-org";
 import { auth } from "@/server/auth/auth";
 import { getAuthCtx } from "@/server/auth/context";
 import { listBrands } from "@/server/dal/brands";
+import { getActiveOrgName } from "@/server/dal/org";
 
 // THE server-side gate (AGENTS.md §7 — client-side guards are UX sugar):
 // no session → sign-in; no active org → recover it from the user's memberships
@@ -40,9 +41,9 @@ export default async function DashboardLayout({
   // Shell data (§5 thin layout): the gate above guarantees getAuthCtx resolves.
   // Brands feed the sidebar's brand switcher + nav (org-scoped, creator-narrowed).
   const ctx = await getAuthCtx();
-  const [brands, organization, cookieStore] = await Promise.all([
+  const [brands, orgName, cookieStore] = await Promise.all([
     listBrands(ctx),
-    auth.api.getFullOrganization({ headers: requestHeaders }),
+    getActiveOrgName(ctx),
     cookies(),
   ]);
   const defaultOpen = cookieStore.get("sidebar_state")?.value !== "false";
@@ -52,7 +53,7 @@ export default async function DashboardLayout({
       <SidebarProvider defaultOpen={defaultOpen}>
         <AppSidebar
           brands={brands.map((b) => ({ id: b.id, name: b.name }))}
-          orgName={organization?.name ?? "POSTORY"}
+          orgName={orgName ?? "POSTORY"}
         />
         <SidebarInset>
           {/* Mobile-only top bar: the desktop sidebar is always visible (mockup

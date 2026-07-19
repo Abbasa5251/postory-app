@@ -8,8 +8,12 @@ function makeQueryClient() {
   return new QueryClient({
     defaultOptions: {
       queries: {
-        // Avoid immediate client refetch of data just streamed from the server.
-        staleTime: 60 * 1000,
+        // Keep client data (better-auth-ui org/session hooks in the shell)
+        // cached across navigations instead of refetching each page mount —
+        // those calls are slow round-trips. Only refetch when genuinely stale.
+        staleTime: 5 * 60 * 1000,
+        gcTime: 10 * 60 * 1000,
+        refetchOnWindowFocus: false,
       },
       dehydrate: {
         // Also dehydrate pending queries so streamed SSR data hydrates.

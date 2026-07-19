@@ -16,8 +16,8 @@ const { redirect } = vi.hoisted(() => ({
 
 const { getAuthCtx } = vi.hoisted(() => ({ getAuthCtx: vi.fn() }));
 const { listBrands } = vi.hoisted(() => ({ listBrands: vi.fn() }));
-const { getFullOrganization } = vi.hoisted(() => ({
-  getFullOrganization: vi.fn(),
+const { getActiveOrgName } = vi.hoisted(() => ({
+  getActiveOrgName: vi.fn(),
 }));
 
 vi.mock("next/headers", () => ({
@@ -31,12 +31,11 @@ vi.mock("@tanstack/react-query", () => ({
   dehydrate: vi.fn(),
 }));
 vi.mock("@/lib/query-client", () => ({ getQueryClient: () => ({}) }));
-vi.mock("@/server/auth/auth", () => ({
-  auth: { api: { getFullOrganization } },
-}));
+vi.mock("@/server/auth/auth", () => ({ auth: {} }));
 vi.mock("@/server/auth/active-org", () => ({ recoverActiveOrg }));
 vi.mock("@/server/auth/context", () => ({ getAuthCtx }));
 vi.mock("@/server/dal/brands", () => ({ listBrands }));
+vi.mock("@/server/dal/org", () => ({ getActiveOrgName }));
 vi.mock("@/components/features/shell/app-sidebar", () => ({
   AppSidebar: () => null,
 }));
@@ -59,7 +58,7 @@ beforeEach(() => {
   // Shell data reads (only reached once the gate passes).
   getAuthCtx.mockResolvedValue({ orgId: "org_1", role: "owner" });
   listBrands.mockResolvedValue([]);
-  getFullOrganization.mockResolvedValue({ name: "Acme Agency" });
+  getActiveOrgName.mockResolvedValue("Acme Agency");
 });
 
 describe("DashboardLayout gate", () => {
