@@ -34,6 +34,14 @@ export const env = createEnv({
     // (same lazy pattern as getRedis). Required in production for account
     // connection / publishing to work.
     ZERNIO_API_KEY: z.string().min(1).optional(),
+    // Inngest (C2+, ADR-003) — durable jobs for AI generation/publishing.
+    // Both optional in the schema so local/CI builds and the unit suites don't
+    // need them; the Inngest SDK also reads them from process.env directly. In
+    // local dev set INNGEST_DEV=1 (a platform flag read by the SDK, not modeled
+    // here) and no keys are needed. Required in production (Cloud mode): without
+    // a signing key the /api/inngest serve endpoint returns 500.
+    INNGEST_EVENT_KEY: z.string().min(1).optional(),
+    INNGEST_SIGNING_KEY: z.string().min(1).optional(),
   },
   experimental__runtimeEnv: process.env,
   emptyStringAsUndefined: true,
