@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getCharLimit,
   getPlatformConfig,
   isPlatform,
   PLATFORM_CONFIG,
@@ -45,5 +46,14 @@ describe("platform config", () => {
   it("getPlatformConfig returns config for known, undefined for unknown", () => {
     expect(getPlatformConfig("tiktok")?.label).toBe("TikTok");
     expect(getPlatformConfig("myspace")).toBeUndefined();
+  });
+
+  it("every platform has a positive caption char limit (C1)", () => {
+    for (const id of PLATFORMS) {
+      expect(PLATFORM_CONFIG[id].charLimit).toBeGreaterThan(0);
+      expect(getCharLimit(id)).toBe(PLATFORM_CONFIG[id].charLimit);
+    }
+    // PRD §6: Threads is the tightest (500).
+    expect(getCharLimit("threads")).toBe(500);
   });
 });
