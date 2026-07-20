@@ -3,6 +3,7 @@ import {
   getActiveRate,
   getBalance,
   grantTrialCredits,
+  outstandingReservation,
   refundCredits,
   reserveCredits,
 } from "@/server/dal/credits";
@@ -74,6 +75,24 @@ describe("getActiveRate — global config (NOT org-scoped), by action + active",
   it("404s when no active rate is seeded for the action", async () => {
     makeSelectChain(select, []);
     await expect(getActiveRate("copy")).rejects.toBeInstanceOf(NotFoundError);
+  });
+});
+
+describe("outstandingReservation — org-scoped, ledger-derived refund amount", () => {
+  it("filters on org_id + the job's ledger rows and returns the owed amount", async () => {
+    // net = -1 (a debit with no refund yet) → owed = 1.
+    const chain = makeSelectChain(select, [{ net: "-1" }]);
+    const owed = await outstandingReservation(ctx, "job_1");
+    expect(owed).toBe(1);
+    const { sql, params } = renderedWhere(chain);
+    expect(sql).toContain("org_id");
+    expect(params).toContain("org_1");
+    expect(params).toContain("job_1");
+  });
+
+  it("returns 0 once already refunded (net 0) — never a negative refund", async () => {
+    makeSelectChain(select, [{ net: "0" }]);
+    expect(await outstandingReservation(ctx, "job_1")).toBe(0);
   });
 });
 

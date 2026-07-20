@@ -3,6 +3,7 @@ import { getSystemCtx } from "@/server/auth/context";
 import { copyChannel } from "@/lib/realtime/copy-channel";
 import {
   getBalance,
+  outstandingReservation,
   refundCredits,
   reserveCredits,
 } from "@/server/dal/credits";
@@ -36,28 +37,34 @@ export const generateCopyJob = inngest.createFunction(
     concurrency: { key: "event.data.orgId", limit: 3 },
     triggers: [copyRequestedEvent],
     // Runs ONCE after retries are exhausted (not per failed attempt), so the
-    // refund can't double-credit. Refunds whatever was actually reserved:
-    // getById reads creditsReserved (0 if the reserve step never ran), and
-    // refundCredits no-ops on 0. Idempotent against an already-finalized job.
+    // refund can't double-credit. The refund amount comes from the LEDGER
+    // (outstandingReservation), not job.creditsReserved — so a reserve that
+    // completed before the `start` step set creditsReserved is still refunded,
+    // and it's idempotent (0 once refunded). Skips an already-finalized job.
     onFailure: async ({ event, step }) => {
       const d = event.data.event.data;
       const ctx = getSystemCtx(d.orgId, JOB_NAME);
-      await step.run("refund-on-failure", async () => {
+      const finalized = await step.run("refund-on-failure", async () => {
         const job = await getById(ctx, d.jobId);
-        if (job.status === "succeeded" || job.status === "failed") return;
-        await refundCredits(ctx, {
-          jobId: d.jobId,
-          credits: job.creditsReserved,
-        });
+        if (job.status === "succeeded" || job.status === "failed") return false;
+        const owed = await outstandingReservation(ctx, d.jobId);
+        await refundCredits(ctx, { jobId: d.jobId, credits: owed });
         await completeJob(ctx, d.jobId, {
           status: "failed",
           creditsSettled: 0,
           error: "generation failed",
         });
+        return true;
       });
-      await step.realtime.publish("publish-error", copyChannel(d.jobId).error, {
-        message: "Generation failed — your credits were refunded.",
-      });
+      // Only tell the client it failed when we actually transitioned it to
+      // failed — never contradict an already-succeeded run.
+      if (finalized) {
+        await step.realtime.publish(
+          "publish-error",
+          copyChannel(d.jobId).error,
+          { message: "Generation failed — your credits were refunded." },
+        );
+      }
     },
   },
   async ({ event, step }) => {

@@ -2,7 +2,7 @@
 
 import { useRealtime } from "inngest/react";
 import { Loader2, Sparkles } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -37,23 +37,41 @@ export function AiCopyCard({
 }: AiCopyCardProps) {
   const [brief, setBrief] = useState("");
   const [variantCount, setVariantCount] = useState<number>(3);
-  const [job, setJob] = useState<Job | null>(null);
+  // The job plus the platform it was generated FOR, so applying/refining a
+  // variant targets that platform even if the active tab changed since.
+  const [session, setSession] = useState<{
+    job: Job;
+    platform: Platform;
+  } | null>(null);
+  // Bridges the generation-time platform to the async onSuccess.
+  const genPlatform = useRef<Platform | null>(null);
 
   const { pending, message, fieldErrors, run } = useActionForm(generateCopy, {
-    onSuccess: (data: Job) => setJob(data),
+    onSuccess: (data: Job) => {
+      const platform = genPlatform.current;
+      if (platform) setSession({ job: data, platform });
+    },
   });
 
-  function generate(extra?: { refineFrom: string; instruction: string }) {
-    if (!platform) return;
+  function generate(opts?: {
+    platform?: Platform;
+    refineFrom?: string;
+    instruction?: string;
+  }) {
+    // Default to the active tab for a fresh generation; a refine passes the
+    // generation-time platform explicitly.
+    const target = opts?.platform ?? platform;
+    if (!target) return;
+    genPlatform.current = target;
     // Remount the stream (new key) so each run starts from a clean slate.
-    setJob(null);
+    setSession(null);
     void run({
       brandId,
-      platform,
+      platform: target,
       brief,
       variantCount,
-      refineFrom: extra?.refineFrom,
-      instruction: extra?.instruction,
+      refineFrom: opts?.refineFrom,
+      instruction: opts?.instruction,
     });
   }
 
@@ -134,13 +152,17 @@ export function AiCopyCard({
               </div>
             )}
 
-            {job && platform && (
+            {session && (
               <CopyStream
-                key={job.jobId}
-                job={job}
-                onApply={(caption) => onApply(platform, caption)}
+                key={session.job.jobId}
+                job={session.job}
+                onApply={(caption) => onApply(session.platform, caption)}
                 onRefine={(caption, instruction) =>
-                  generate({ refineFrom: caption, instruction })
+                  generate({
+                    platform: session.platform,
+                    refineFrom: caption,
+                    instruction,
+                  })
                 }
               />
             )}
@@ -178,20 +200,26 @@ function CopyStream({ job, onApply, onRefine }: CopyStreamProps) {
     token: () => Promise.resolve(job.token),
   });
 
+  // The hook types message `data` as `unknown`, so we assert per topic. The
+  // shapes are guaranteed by the channel's zod schemas, validated on the
+  // publish side (copy-channel.ts) — re-parsing here would just duplicate that.
   const streamed = messages.all
     .filter((m) => m.topic === "chunk")
     .map((m) => (m.data as { text: string }).text)
     .join("");
   const doneMsg = messages.all.find((m) => m.topic === "done");
-  const errorMsg = messages.all.find((m) => m.topic === "error");
   const variants = doneMsg
     ? (doneMsg.data as { variants: string[] }).variants
     : null;
+  const errorMsg = messages.all.find((m) => m.topic === "error");
+  const errorText = errorMsg
+    ? (errorMsg.data as { message: string }).message
+    : null;
 
-  if (errorMsg) {
+  if (errorText) {
     return (
       <p role="alert" className="text-sm text-destructive">
-        {(errorMsg.data as { message: string }).message}
+        {errorText}
       </p>
     );
   }

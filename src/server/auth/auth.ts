@@ -222,6 +222,18 @@ export const auth = betterAuth({
             );
           } catch (error) {
             console.error("[credits] trial grant failed", error);
+            // Structured, tagged signal so ops can detect + backfill orgs that
+            // started with no trial credits. Fail-soft: never break org create.
+            try {
+              const { log } =
+                await import("@/server/services/observability/log");
+              log.error("trial credit grant failed", {
+                orgId: organization.id,
+                error: error instanceof Error ? error.message : String(error),
+              });
+            } catch {
+              // observability itself is best-effort here.
+            }
           }
         },
         beforeCreateInvitation: async ({ invitation }) => {

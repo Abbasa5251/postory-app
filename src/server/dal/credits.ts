@@ -53,6 +53,31 @@ export async function getBalance(ctx: AuthCtx): Promise<number> {
 }
 
 /**
+ * Credits still owed back for a generation job: the negated net of that job's
+ * ledger rows (debit −c, refund +c), floored at 0. The ledger is the source of
+ * truth for spend, so this is the authoritative amount to refund on failure —
+ * correct no matter which step failed (a reserve that completed before the job
+ * row's creditsReserved was set still shows here) and idempotent (0 once
+ * refunded). Org-scoped.
+ */
+export async function outstandingReservation(
+  ctx: AuthCtx,
+  jobId: string,
+): Promise<number> {
+  const [row] = await db
+    .select({ net: sql<string>`coalesce(sum(${creditLedger.delta}), 0)` })
+    .from(creditLedger)
+    .where(
+      and(
+        orgScope(ctx, creditLedger),
+        eq(creditLedger.refType, "generation_job"),
+        eq(creditLedger.refId, jobId),
+      ),
+    );
+  return Math.max(0, -Number(row?.net ?? 0));
+}
+
+/**
  * The active model + credit price for a billing action (ADR-012 — model ids and
  * prices are never hardcoded). NOT org-scoped: credit_rates is GLOBAL config,
  * the documented §6.4 exception (like the table itself). Throws NotFoundError

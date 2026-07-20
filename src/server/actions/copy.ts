@@ -2,7 +2,7 @@
 
 import { getClientSubscriptionToken } from "inngest/react";
 import { copyChannel } from "@/lib/realtime/copy-channel";
-import type { VoiceProfile } from "@/lib/validation/brands";
+import { voiceProfileSchema } from "@/lib/validation/brands";
 import { generateCopySchema } from "@/lib/validation/copy";
 import { getBrandById } from "@/server/dal/brands";
 import { getActiveRate, getBalance } from "@/server/dal/credits";
@@ -49,20 +49,32 @@ export const generateCopy = withAction(
       },
     });
 
+    // Validate the stored voice profile through its schema rather than trusting
+    // the jsonb column shape — null (no guidance) if absent or unparseable.
+    const parsedVoice = voiceProfileSchema
+      .nullable()
+      .safeParse(brand.voiceProfile ?? null);
+    const voiceProfile = parsedVoice.success ? parsedVoice.data : null;
+
     await inngest.send(
-      copyRequestedEvent.create({
-        orgId: ctx.orgId,
-        jobId,
-        brandId: data.brandId,
-        credits: rate.credits,
-        modelId: rate.modelId,
-        platform: data.platform,
-        brief: data.brief,
-        voiceProfile: (brand.voiceProfile as VoiceProfile | null) ?? null,
-        variantCount: data.variantCount,
-        refineFrom: data.refineFrom,
-        instruction: data.instruction,
-      }),
+      copyRequestedEvent.create(
+        {
+          orgId: ctx.orgId,
+          jobId,
+          brandId: data.brandId,
+          credits: rate.credits,
+          modelId: rate.modelId,
+          platform: data.platform,
+          brief: data.brief,
+          voiceProfile,
+          variantCount: data.variantCount,
+          refineFrom: data.refineFrom,
+          instruction: data.instruction,
+        },
+        // Idempotency: the event id is the (unique-per-call) job id, so a
+        // retried send within the dedupe window can't spawn a duplicate run.
+        { id: jobId },
+      ),
     );
 
     const token = await getClientSubscriptionToken(inngest, {

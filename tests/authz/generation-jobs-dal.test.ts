@@ -103,8 +103,9 @@ describe("getById — org-scoped, brand access enforced", () => {
 });
 
 describe("startJob — org-scoped update + audit", () => {
-  it("updates status/creditsReserved scoped to org_id and audits", async () => {
+  it("updates status/creditsReserved scoped to org_id and audits generation.start", async () => {
     const upd = captureUpdate(update, [{ id: "job_1" }]);
+    const inserts = captureInserts(insert);
     makeBatch(batch);
     await startJob(sysCtx, "job_1", { creditsReserved: 1 });
     const { sql, params } = renderedSql(upd.where!);
@@ -112,6 +113,10 @@ describe("startJob — org-scoped update + audit", () => {
     expect(params).toContain("org_1");
     expect(type(upd.set).status).toBe("running");
     expect(type(upd.set).creditsReserved).toBe(1);
+    // The batch pairs the update with a generation.start audit insert.
+    expect(
+      inserts.some((c) => type(c.values).action === "generation.start"),
+    ).toBe(true);
   });
 
   it("404s when the update matches no row in the ctx org", async () => {
@@ -124,8 +129,9 @@ describe("startJob — org-scoped update + audit", () => {
 });
 
 describe("completeJob — terminal transition, org-scoped + audited", () => {
-  it("sets succeeded + creditsSettled scoped to org_id", async () => {
+  it("sets succeeded + creditsSettled scoped to org_id and audits generation.succeeded", async () => {
     const upd = captureUpdate(update, [{ id: "job_1" }]);
+    const inserts = captureInserts(insert);
     makeBatch(batch);
     await completeJob(sysCtx, "job_1", {
       status: "succeeded",
@@ -136,10 +142,14 @@ describe("completeJob — terminal transition, org-scoped + audited", () => {
     expect(params).toContain("org_1");
     expect(type(upd.set).status).toBe("succeeded");
     expect(type(upd.set).creditsSettled).toBe(1);
+    expect(
+      inserts.some((c) => type(c.values).action === "generation.succeeded"),
+    ).toBe(true);
   });
 
-  it("records a failure with the error and settled credits", async () => {
+  it("records a failure with the error and audits generation.failed", async () => {
     const upd = captureUpdate(update, [{ id: "job_1" }]);
+    const inserts = captureInserts(insert);
     makeBatch(batch);
     await completeJob(sysCtx, "job_1", {
       status: "failed",
@@ -148,5 +158,8 @@ describe("completeJob — terminal transition, org-scoped + audited", () => {
     });
     expect(type(upd.set).status).toBe("failed");
     expect(type(upd.set).error).toBe("boom");
+    expect(
+      inserts.some((c) => type(c.values).action === "generation.failed"),
+    ).toBe(true);
   });
 });
