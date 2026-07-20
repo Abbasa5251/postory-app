@@ -1,6 +1,18 @@
 import "server-only";
 import { PLATFORM_CONFIG, type Platform } from "@/lib/platforms/config";
-import type { VoiceProfile } from "@/lib/validation/brands";
+
+/**
+ * The brand-voice fields the prompt reads (B2). A structural subset of
+ * VoiceProfile with all keys optional, so both the stored profile and the
+ * Inngest event payload (also all-optional) assign without coupling this pure
+ * module to the validation schema's exact inferred shape.
+ */
+export type VoiceGuidance = {
+  tone?: string;
+  bannedWords?: string[];
+  hashtags?: string[];
+  samplePosts?: string[];
+};
 
 /**
  * AI copy prompt assembly (C2) — pure, no I/O, unit-tested. Turns a brief +
@@ -24,14 +36,14 @@ const SEPARATOR_LINE = /^[ \t]*={3,}[ \t]*$/m;
 export type CopyPromptInput = {
   platform: Platform;
   brief: string;
-  voiceProfile: VoiceProfile | null;
+  voiceProfile: VoiceGuidance | null;
   variantCount: number;
   /** Refine loop: an existing caption to rework (with `instruction`). */
   refineFrom?: string;
   instruction?: string;
 };
 
-function voiceGuidance(voice: VoiceProfile | null): string {
+function voiceGuidance(voice: VoiceGuidance | null): string {
   if (!voice) return "";
   const lines: string[] = [];
   if (voice.tone?.trim()) lines.push(`Brand tone: ${voice.tone.trim()}`);
