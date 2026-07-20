@@ -59,7 +59,7 @@ export function Composer({
   );
   const [postId, setPostId] = useState<string | undefined>(initial?.postId);
 
-  const { pending, message, run } = useActionForm(saveDraft, {
+  const { pending, message, fieldErrors, run } = useActionForm(saveDraft, {
     onSuccess: (data: { id: string }) => {
       toast.success("Draft saved.");
       if (!postId) {
@@ -138,10 +138,16 @@ export function Composer({
         }
       />
 
-      {message && (
-        <p role="alert" className="mb-4 text-sm text-destructive">
-          {message}
-        </p>
+      {(message || fieldErrors) && (
+        <div role="alert" className="mb-4 space-y-1 text-sm text-destructive">
+          {message && <p>{message}</p>}
+          {/* Server-side VALIDATION failures set fieldErrors, not message —
+              surface them so feedback shows even when the client guard didn't. */}
+          {fieldErrors &&
+            Object.values(fieldErrors)
+              .flat()
+              .map((err, i) => <p key={i}>{err}</p>)}
+        </div>
       )}
 
       <div className="flex flex-wrap gap-4">

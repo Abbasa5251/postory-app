@@ -69,6 +69,15 @@ describe("postContentSchema", () => {
     });
     expect(okOnInstagram.success).toBe(true);
   });
+
+  it("accepts a caption exactly at the platform's char limit (boundary)", () => {
+    const caption = "a".repeat(PLATFORM_CONFIG.threads.charLimit);
+    const atLimit = postContentSchema.safeParse({
+      targets: ["threads"],
+      variants: { threads: { caption } },
+    });
+    expect(atLimit.success).toBe(true);
+  });
 });
 
 describe("saveDraftSchema", () => {

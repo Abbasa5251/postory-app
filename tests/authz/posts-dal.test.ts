@@ -6,8 +6,10 @@ import {
   captureInserts,
   captureUpdate,
   makeSelectChain,
+  renderedSql,
   renderedWhere,
 } from "../helpers/db-mock";
+import type { SQL } from "drizzle-orm";
 
 /**
  * A8 mock-level tenancy proof for the posts DAL (C1). Every exported query
@@ -51,6 +53,13 @@ describe("getDraftById — org scoping is structurally present", () => {
     expect(sql).toContain("org_id");
     expect(params).toContain("org_1");
     expect(params).toContain("post_1");
+
+    // The current-version leftJoin is itself org-scoped (tenancy on the join,
+    // not just the outer where) — a cross-org version can't leak in.
+    expect(chain.leftJoin).toHaveBeenCalledOnce();
+    const joinCond = renderedSql(chain.leftJoin.mock.calls[0]![1] as SQL);
+    expect(joinCond.sql).toContain("org_id");
+    expect(joinCond.params).toContain("org_1");
   });
 
   it("404s when no row matches (nonexistent / cross-org)", async () => {
@@ -115,22 +124,29 @@ describe("updateDraft — appends an immutable version, DRAFT-only", () => {
     );
   });
 
-  it("rejects editing a non-DRAFT post (ForbiddenError)", async () => {
+  it("rejects editing a non-DRAFT post (ForbiddenError) and writes nothing", async () => {
     makeSelectChain(select, [
       { id: "post_1", brandId: "brand_1", status: "APPROVED", content: null },
     ]);
-    captureInserts(insert);
+    const inserts = captureInserts(insert);
     captureUpdate(update);
     await expect(
       updateDraft(adminCtx, { postId: "post_1", content: CONTENT }),
     ).rejects.toBeInstanceOf(ForbiddenError);
+    // No new version, no pointer update, no audit — the guard runs first.
+    expect(inserts).toHaveLength(0);
+    expect(update).not.toHaveBeenCalled();
   });
 
   it("404s on a cross-org / nonexistent post before any write", async () => {
     makeSelectChain(select, []);
+    const inserts = captureInserts(insert);
+    captureUpdate(update);
     await expect(
       updateDraft(adminCtx, { postId: "post_x", content: CONTENT }),
     ).rejects.toBeInstanceOf(NotFoundError);
+    expect(inserts).toHaveLength(0);
+    expect(update).not.toHaveBeenCalled();
   });
 });
 

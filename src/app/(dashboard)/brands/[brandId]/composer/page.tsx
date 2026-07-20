@@ -1,6 +1,7 @@
 import { Link2 } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import * as z from "zod";
 import { Composer } from "@/components/features/composer/composer";
 import { PageHeader } from "@/components/features/shell/page-header";
 import { Button } from "@/components/ui/button";
@@ -59,6 +60,9 @@ export default async function ComposerPage({
   // all 404 (getDraftById); C1 only edits drafts, so a non-DRAFT post 404s too.
   let initial;
   if (postId) {
+    // A malformed id would reach getDraftById's uuid column and throw a DB
+    // error, not a NotFoundError — treat it as a not-found (404) before the query.
+    if (!z.uuid().safeParse(postId).success) notFound();
     let draft;
     try {
       draft = await getDraftById(ctx, postId);
