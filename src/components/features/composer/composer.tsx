@@ -242,8 +242,7 @@ export function Composer({
                   />
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">
-                      Variant for {activePlatformLabel} — edits here don&apos;t
-                      change other platforms.
+                      {`Variant for ${activePlatformLabel} — edits here don't change other platforms.`}
                     </span>
                     <span
                       className={cn(
@@ -271,8 +270,7 @@ export function Composer({
             Image and video upload with per-platform spec checks lands with C4.
           </DisabledCard>
           <DisabledCard title="Schedule" soon="F1">
-            Pick a date and time to publish — {timezone} (workspace timezone).
-            Scheduling lands with F1.
+            {`Pick a date and time to publish — ${timezone} (workspace timezone). Scheduling lands with F1.`}
           </DisabledCard>
         </div>
 
