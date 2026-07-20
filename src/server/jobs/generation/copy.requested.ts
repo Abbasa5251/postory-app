@@ -36,11 +36,16 @@ export const generateCopyJob = inngest.createFunction(
     retries: 1,
     concurrency: { key: "event.data.orgId", limit: 3 },
     triggers: [copyRequestedEvent],
-    // Runs ONCE after retries are exhausted (not per failed attempt), so the
-    // refund can't double-credit. The refund amount comes from the LEDGER
-    // (outstandingReservation), not job.creditsReserved — so a reserve that
-    // completed before the `start` step set creditsReserved is still refunded,
-    // and it's idempotent (0 once refunded). Skips an already-finalized job.
+    // Settles a job's refund at most once, three ways: (1) the event id is the
+    // jobId, so Inngest runs one function per job — no concurrent onFailure;
+    // (2) onFailure fires once after retries and this step.run is memoized;
+    // (3) the amount is the LEDGER-derived remaining balance
+    // (outstandingReservation), not job.creditsReserved — so a re-run (even one
+    // that crashed between refund and completeJob) recomputes 0 and
+    // refundCredits no-ops. This also refunds a reserve that completed before
+    // `start` set creditsReserved. A DB-level partial-unique guard on the refund
+    // row is the belt-and-suspenders, deferred to H4's credit hardening (needs a
+    // migration, ships alone per §12). Skips an already-finalized job.
     onFailure: async ({ event, step }) => {
       const d = event.data.event.data;
       const ctx = getSystemCtx(d.orgId, JOB_NAME);
