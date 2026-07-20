@@ -12,6 +12,7 @@ import { PLATFORM_CONFIG, type Platform } from "@/lib/platforms/config";
 import type { PostContent } from "@/lib/validation/posts";
 import { cn } from "@/lib/utils";
 import { saveDraft } from "@/server/actions/posts";
+import { AiCopyCard } from "./ai-copy-card";
 import { DisabledCard } from "./disabled-card";
 
 export type ComposerPlatform = {
@@ -29,6 +30,8 @@ type ComposerProps = {
   platforms: ComposerPlatform[];
   /** Present when editing an existing draft. */
   initial?: { postId: string; content: PostContent };
+  /** Whether the brand has a voice profile the AI will apply (C2). */
+  hasVoiceProfile: boolean;
 };
 
 function captionsFromContent(content: PostContent | undefined) {
@@ -45,6 +48,7 @@ export function Composer({
   timezone,
   platforms,
   initial,
+  hasVoiceProfile,
 }: ComposerProps) {
   const [targets, setTargets] = useState<Platform[]>(
     initial?.content.targets ?? [],
@@ -263,9 +267,18 @@ export function Composer({
             </CardContent>
           </Card>
 
-          <DisabledCard title="Write it with AI" soon="C2">
-            AI copy generation from your brief + brand voice lands with C2.
-          </DisabledCard>
+          <AiCopyCard
+            brandId={brandId}
+            platform={active}
+            hasVoiceProfile={hasVoiceProfile}
+            onApply={(platform, caption) => {
+              // Ensure the platform is targeted (so its tab + variant exist),
+              // then write the generated caption into it.
+              if (!targets.includes(platform)) toggleTarget(platform);
+              setCaption(platform, caption);
+              setSelectedTab(platform);
+            }}
+          />
           <DisabledCard title="Media" soon="C4">
             Image and video upload with per-platform spec checks lands with C4.
           </DisabledCard>

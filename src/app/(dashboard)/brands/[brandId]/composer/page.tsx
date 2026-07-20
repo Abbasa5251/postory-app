@@ -85,6 +85,9 @@ export default async function ComposerPage({
       timezone={brand.timezone}
       platforms={platforms}
       initial={initial}
+      // B2 stores null when the voice profile is all-empty, so a non-null value
+      // means the brand has guidance the AI will apply (C2).
+      hasVoiceProfile={Boolean(brand.voiceProfile)}
     />
   );
 }
