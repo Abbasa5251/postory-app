@@ -207,6 +207,23 @@ export const auth = betterAuth({
       // invitation accept, hence beforeAcceptInvitation as well (it also
       // blocks accepting any legacy pre-guard invites).
       organizationHooks: {
+        // C2 (H1 seam): grant the one-time trial credits so a brand-new org has
+        // a balance to run AI generation against. Idempotent + fail-soft — a
+        // credit-grant failure must not break org creation (H1 owns the real
+        // trial lifecycle: expiry, caps, reactivation). Dynamic import keeps the
+        // DAL (db/env) out of the better-auth CLI's schema-gen load graph, like
+        // recordAuthEvent above.
+        afterCreateOrganization: async ({ organization }) => {
+          try {
+            const { getSystemCtx } = await import("@/server/auth/context");
+            const { grantTrialCredits } = await import("@/server/dal/credits");
+            await grantTrialCredits(
+              getSystemCtx(organization.id, "credits/trial.grant"),
+            );
+          } catch (error) {
+            console.error("[credits] trial grant failed", error);
+          }
+        },
         beforeCreateInvitation: async ({ invitation }) => {
           assertAssignableRole(invitation.role);
         },

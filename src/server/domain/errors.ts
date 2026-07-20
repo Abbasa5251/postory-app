@@ -3,9 +3,8 @@ import "server-only";
 /**
  * Typed domain errors (AGENTS.md §9) — thrown from src/server/domain/ and
  * the DAL; server actions map them to user-safe messages. This file is the
- * canonical home: EntitlementError, TransitionError and
- * InsufficientCreditsError extend DomainError here when their feature PRs
- * land (B4, E1, D2) — extend, never fork.
+ * canonical home: EntitlementError and TransitionError extend DomainError
+ * here when their feature PRs land (B4, E1) — extend, never fork.
  */
 export abstract class DomainError extends Error {
   abstract readonly code: string;
@@ -36,5 +35,24 @@ export class ForbiddenError extends DomainError {
   constructor(message = "You are not allowed to do this") {
     super(message);
     this.name = "ForbiddenError";
+  }
+}
+
+/**
+ * The org's credit balance can't cover a generation (C2/D2, ADR-005). Safe to
+ * reveal — it's the caller's OWN balance, not cross-tenant existence — so it
+ * carries the shortfall for a helpful UI message. `withAction` maps the
+ * INSUFFICIENT_CREDITS code without reporting it to Sentry (an expected
+ * failure, not a bug). Thrown BEFORE the OpenRouter call so nothing is spent.
+ */
+export class InsufficientCreditsError extends DomainError {
+  readonly code = "INSUFFICIENT_CREDITS";
+
+  constructor(
+    readonly required: number,
+    readonly available: number,
+  ) {
+    super(`Insufficient credits: need ${required}, have ${available}.`);
+    this.name = "InsufficientCreditsError";
   }
 }
