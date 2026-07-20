@@ -6,7 +6,9 @@
  *
  * Isomorphic-safe (lib/): no server imports, no secrets. The per-platform
  * media/character rules (PRD §6) attach to these entries as later epics need
- * them — B3 only needs the identity + Zernio connect slug + display label.
+ * them — B3 needed only identity + Zernio slug + label; C1 adds the caption
+ * `charLimit` (composer counter + validation). Media specs and aspect ratios
+ * (PRD §6) still attach later, with C4/C5.
  */
 
 /** The 6 launch platforms (D3). `youtube` covers Shorts — a format, not a platform. */
@@ -38,6 +40,13 @@ export type PlatformConfig = {
    * rather than re-hardcoding platform colors.
    */
   color: string;
+  /**
+   * Maximum caption length (characters) the composer counter warns/blocks on
+   * and `postContentSchema` validates against (C1, PRD §6). These are the
+   * platform caption ceilings, not media specs — re-verify against the current
+   * Zernio/platform docs at each phase gate (PRD §7.2 note).
+   */
+  charLimit: number;
 };
 
 export const PLATFORM_CONFIG: Record<Platform, PlatformConfig> = {
@@ -46,36 +55,43 @@ export const PLATFORM_CONFIG: Record<Platform, PlatformConfig> = {
     label: "Instagram",
     zernioSlug: "instagram",
     color: "#d6336c",
+    charLimit: 2200,
   },
   facebook: {
     id: "facebook",
     label: "Facebook",
     zernioSlug: "facebook",
     color: "#1877f2",
+    charLimit: 63206,
   },
   tiktok: {
     id: "tiktok",
     label: "TikTok",
     zernioSlug: "tiktok",
     color: "#16181c",
+    charLimit: 2200,
   },
   linkedin: {
     id: "linkedin",
     label: "LinkedIn",
     zernioSlug: "linkedin",
     color: "#0a66c2",
+    charLimit: 3000,
   },
   threads: {
     id: "threads",
     label: "Threads",
     zernioSlug: "threads",
     color: "#000000",
+    // PRD §6: Threads 500-char limit (the mockup's config omits Threads).
+    charLimit: 500,
   },
   youtube: {
     id: "youtube",
     label: "YouTube",
     zernioSlug: "youtube",
     color: "#e02f2f",
+    charLimit: 5000,
   },
 };
 
@@ -92,4 +108,9 @@ export function isPlatform(value: string): value is Platform {
 /** Config for a platform, or undefined if it isn't a launch platform. */
 export function getPlatformConfig(value: string): PlatformConfig | undefined {
   return isPlatform(value) ? PLATFORM_CONFIG[value] : undefined;
+}
+
+/** Caption character ceiling for a platform (C1 composer counter/validation). */
+export function getCharLimit(platform: Platform): number {
+  return PLATFORM_CONFIG[platform].charLimit;
 }

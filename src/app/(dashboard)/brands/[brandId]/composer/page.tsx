@@ -1,15 +1,86 @@
-import { PenSquare } from "lucide-react";
-import { ComingSoon } from "@/components/features/shell/coming-soon";
+import { Link2 } from "lucide-react";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { Composer } from "@/components/features/composer/composer";
+import { PageHeader } from "@/components/features/shell/page-header";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PLATFORM_LIST } from "@/lib/platforms/config";
+import { emptyPostContent } from "@/lib/validation/posts";
+import { listSocialAccounts } from "@/server/dal/accounts";
+import { getDraftById } from "@/server/dal/posts";
+import { NotFoundError } from "@/server/domain/errors";
 import { requireBrand } from "../_lib/require-brand";
 
+// Thin route (§5): scoped DAL reads + render. params/searchParams are Promises
+// in Next 16.
 export default async function ComposerPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ brandId: string }>;
+  searchParams: Promise<{ post?: string }>;
 }) {
   const { brandId } = await params;
-  await requireBrand(brandId);
+  const { post: postId } = await searchParams;
+  const { ctx, brand } = await requireBrand(brandId);
+
+  const accounts = await listSocialAccounts(ctx, brandId);
+  if (accounts.length === 0) {
+    return (
+      <div className="flex flex-col gap-6">
+        <PageHeader
+          title="New post"
+          description={`Drafting for ${brand.name}.`}
+        />
+        <EmptyState
+          icon={<Link2 className="size-5" />}
+          title="Connect an account first"
+          description="The composer publishes to a brand's connected social accounts. Connect at least one to start drafting."
+          action={
+            <Button render={<Link href={`/brands/${brandId}/accounts`} />}>
+              Go to Connections
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
+
+  const connectedPlatforms = new Set(accounts.map((a) => a.platform));
+  const platforms = PLATFORM_LIST.map((p) => ({
+    id: p.id,
+    label: p.label,
+    color: p.color,
+    connected: connectedPlatforms.has(p.id),
+  }));
+
+  // Edit mode: hydrate an existing DRAFT. Cross-org / unassigned / nonexistent
+  // all 404 (getDraftById); C1 only edits drafts, so a non-DRAFT post 404s too.
+  let initial;
+  if (postId) {
+    let draft;
+    try {
+      draft = await getDraftById(ctx, postId);
+    } catch (error) {
+      if (error instanceof NotFoundError) notFound();
+      throw error;
+    }
+    // C1 only edits drafts; a non-DRAFT post is not composable here.
+    if (draft.status !== "DRAFT") notFound();
+    initial = {
+      postId: draft.id,
+      content: draft.content ?? emptyPostContent(),
+    };
+  }
+
   return (
-    <ComingSoon title="Composer" icon={<PenSquare className="size-6" />} />
+    <Composer
+      brandId={brandId}
+      brandName={brand.name}
+      timezone={brand.timezone}
+      platforms={platforms}
+      initial={initial}
+    />
   );
 }

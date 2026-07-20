@@ -12,6 +12,7 @@ import type { SQL } from "drizzle-orm";
 export type SelectChain = {
   from: Mock;
   innerJoin: Mock;
+  leftJoin: Mock;
   where: Mock;
   orderBy: Mock;
   limit: Mock;
@@ -30,6 +31,7 @@ export function makeSelectChain(selectFn: Mock, rows: unknown[]): SelectChain {
   const chain = {
     from: vi.fn(),
     innerJoin: vi.fn(),
+    leftJoin: vi.fn(),
     where: vi.fn(),
     orderBy: vi.fn(),
     limit: vi.fn(),
@@ -39,8 +41,12 @@ export function makeSelectChain(selectFn: Mock, rows: unknown[]): SelectChain {
   } as unknown as SelectChain;
   chain.from.mockReturnValue(chain);
   chain.innerJoin.mockReturnValue(chain);
+  chain.leftJoin.mockReturnValue(chain);
   chain.where.mockReturnValue(chain);
-  chain.orderBy.mockResolvedValue(rows);
+  // orderBy returns the (thenable) chain so both `.orderBy()` terminal list
+  // queries (awaited via chain.then) and `.orderBy().limit()` single-row
+  // queries resolve to rows.
+  chain.orderBy.mockReturnValue(chain);
   chain.limit.mockResolvedValue(rows);
   selectFn.mockReturnValue(chain);
   return chain;

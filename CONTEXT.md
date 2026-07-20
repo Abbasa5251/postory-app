@@ -55,6 +55,33 @@ A single flat list of a Brand's preferred hashtags, one field of its Voice
 Profile; the composer and AI draw from it. Stored bare (no leading `#`).
 _Avoid_: hashtag sets, tags, keywords.
 
+### Posts & composing
+
+**Post**:
+A single piece of content authored for a Brand and routed through the lifecycle
+(draft → review → approved → scheduled → published). It hangs off exactly one
+Brand; its editable content lives in Post Versions, not on the Post row itself.
+_Avoid_: message, content item, update, story.
+
+**Post Version**:
+An immutable snapshot of a Post's content — the selected target Platforms and a
+per-Platform Caption. Each save appends a new version; approvals bind to a
+specific version, so any edit after approval means a new version (and a trip
+back to draft). Never mutated in place.
+_Avoid_: revision, draft (a draft is a Post _status_, not a version), edit.
+
+**Composer**:
+The screen where a Member hand-writes (and later AI-generates) a Post: pick
+target Platforms, write a Caption variant per Platform, attach media, schedule.
+It saves drafts; it never publishes.
+_Avoid_: editor, post builder, studio.
+
+**Caption**:
+The text body of a Post for one Platform — one **variant** per targeted
+Platform, each validated against that Platform's character limit. Editing one
+Platform's caption never changes another's.
+_Avoid_: copy (copy is the AI-generation act), body, text, description.
+
 ### Publishing plumbing
 
 **Zernio Profile**:
