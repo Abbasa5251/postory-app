@@ -82,6 +82,32 @@ Platform, each validated against that Platform's character limit. Editing one
 Platform's caption never changes another's.
 _Avoid_: copy (copy is the AI-generation act), body, text, description.
 
+### AI generation & credits
+
+**AI Copy**:
+The act of generating caption text with AI (C2): a Member writes a **brief**,
+the model returns a batch of caption **variants** for the active Platform,
+shaped by the Brand's Voice Profile. A **refine** reworks one variant with an
+instruction. All generation runs in an Inngest job, never a request handler
+(ADR-003); tokens stream to the Composer over Inngest realtime.
+_Avoid_: caption (a caption is the stored text; "copy" is the generation act), completion, prompt (the prompt is an input to generation).
+
+**Generation Job**:
+One AI generation run (`generation_jobs` row) — type copy now, image/video later
+(D). Moves queued → running → succeeded | failed. Records the model id, the
+credits reserved, and the credits settled; the Credit Ledger stays the source of
+truth for spend.
+_Avoid_: task, request, generation (ambiguous — this is the tracked run).
+
+**Credit / Credit Ledger**:
+Credits are the AI-usage currency (integers; ~$0.015 retail each). The
+**Credit Ledger** (`credit_ledger`) is append-only: every grant, debit, and
+refund is a new row — corrections are compensating rows, never edits. Balance =
+SUM(delta) per org. A generation **reserves** (debits) credits BEFORE the
+OpenRouter call, then **settles** or **refunds** after (failed generations are
+unbilled, so they refund in full). New trial orgs get a hardcoded grant (150).
+_Avoid_: tokens, points, balance (balance is the derived SUM, not the ledger), quota.
+
 ### Publishing plumbing
 
 **Zernio Profile**:
