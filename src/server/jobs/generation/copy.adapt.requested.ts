@@ -87,6 +87,10 @@ export const adaptCopyJob = inngest.createFunction(
     const results = await Promise.all(
       d.platforms.map((platform) =>
         step.run(`adapt-${platform}`, async () => {
+          // Generate + trim. A genuine failure here (OpenRouter error, empty
+          // response, etc.) marks the platform unsuccessful → its credit is
+          // refunded at settle and it's reported in `failed`.
+          let caption: string;
           try {
             const { system, prompt } = buildAdaptPrompt({
               platform,
@@ -98,22 +102,35 @@ export const adaptCopyJob = inngest.createFunction(
               system,
               prompt,
             });
-            const caption = (await text).trim();
-            // Bare client publish inside a step (no step-in-step wrapping).
+            caption = (await text).trim();
+          } catch {
+            return { platform, ok: false as const };
+          }
+          // The caption is now captured in this step's DURABLE result (returned
+          // below) and re-broadcast in the `done` payload, so realtime is only
+          // the fast path. The live publish is therefore BEST-EFFORT: a delivery
+          // failure must never fail the platform or refund a caption we actually
+          // produced — the client falls back to `done.captions`.
+          try {
             await inngest.realtime.publish(adaptChannel(d.jobId).adapted, {
               platform,
               caption,
             });
-            return { platform, ok: true as const };
           } catch {
-            return { platform, ok: false as const };
+            // Swallow — best-effort live delivery; the caption is durable above.
           }
+          return { platform, ok: true as const, caption };
         }),
       ),
     );
 
     const succeeded = results.filter((r) => r.ok);
     const failed = results.filter((r) => !r.ok).map((r) => r.platform);
+    // The full set of produced captions — sent in `done` so the client can
+    // apply any it missed when individual `adapted` messages were dropped.
+    const captions = results.flatMap((r) =>
+      r.ok ? [{ platform: r.platform, caption: r.caption }] : [],
+    );
 
     // Charge only the platforms that succeeded; refund the rest.
     await step.run("settle", async () => {
@@ -133,6 +150,7 @@ export const adaptCopyJob = inngest.createFunction(
 
     await step.realtime.publish("publish-done", adaptChannel(d.jobId).done, {
       failed,
+      captions,
     });
     return { jobId: d.jobId, adapted: succeeded.length, failed: failed.length };
   },

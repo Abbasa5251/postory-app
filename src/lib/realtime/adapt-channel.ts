@@ -10,9 +10,11 @@ import { postPlatformSchema } from "@/lib/validation/posts";
  *
  * Unlike the copy channel (C2), adaptation fans out one call per platform, so
  * results arrive per platform: an `adapted` message lands as each target's
- * caption completes (the composer fills that tab), then a single `done`
- * reports which platforms failed (if any). `error` is a terminal job-level
- * failure (e.g. reserve failed) — reserved credits already refunded.
+ * caption completes (the composer fills that tab), then a single `done` reports
+ * which platforms failed (if any) AND re-broadcasts every produced caption so
+ * the client can apply any it missed when an `adapted` message was dropped.
+ * `error` is a terminal job-level failure (e.g. reserve failed) — reserved
+ * credits already refunded.
  *
  * The subscription token minted for this channel is scoped to a single jobId
  * the caller just created (server action), so it can't read another org's stream.
@@ -27,8 +29,16 @@ export const adaptChannel = channel({
         caption: z.string(),
       }),
     },
-    // Completion signal + which target platforms failed to adapt (if any).
-    done: { schema: z.object({ failed: z.array(postPlatformSchema) }) },
+    // Completion signal: which platforms failed (if any) + every produced
+    // caption (durable fallback for any `adapted` message the client missed).
+    done: {
+      schema: z.object({
+        failed: z.array(postPlatformSchema),
+        captions: z.array(
+          z.object({ platform: postPlatformSchema, caption: z.string() }),
+        ),
+      }),
+    },
     // Terminal job-level failure (reserved credits already refunded).
     error: { schema: z.object({ message: z.string() }) },
   },

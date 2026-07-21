@@ -144,25 +144,32 @@ function AdaptStream({ job, platforms, onAdapted }: AdaptStreamProps) {
     .filter((m) => m.topic === "adapted")
     .map((m) => m.data as { platform: Platform; caption: string });
   const doneMsg = messages.all.find((m) => m.topic === "done");
-  const failed = doneMsg
-    ? (doneMsg.data as { failed: Platform[] }).failed
+  const doneData = doneMsg
+    ? (doneMsg.data as {
+        failed: Platform[];
+        captions: { platform: Platform; caption: string }[];
+      })
     : null;
+  const failed = doneData ? doneData.failed : null;
   const errorMsg = messages.all.find((m) => m.topic === "error");
   const errorText = errorMsg
     ? (errorMsg.data as { message: string }).message
     : null;
 
-  // Apply each adapted caption to the composer exactly once (each platform
-  // adapts once per job). Guarded by a ref so re-renders never re-apply.
+  // Apply each caption to the composer exactly once (each platform adapts once
+  // per job). Guarded by a ref so re-renders never re-apply. Source both the
+  // incremental `adapted` messages and `done.captions` — the latter is the
+  // fallback for any `adapted` message lost while the connection was down.
   const appliedRef = useRef<Set<Platform>>(new Set());
   useEffect(() => {
-    for (const a of adapted) {
+    const incoming = doneData ? [...adapted, ...doneData.captions] : adapted;
+    for (const a of incoming) {
       if (!appliedRef.current.has(a.platform)) {
         appliedRef.current.add(a.platform);
         onAdapted(a.platform, a.caption);
       }
     }
-  }, [messages.all, adapted, onAdapted]);
+  }, [messages.all, adapted, doneData, onAdapted]);
 
   if (errorText) {
     return (
@@ -172,7 +179,10 @@ function AdaptStream({ job, platforms, onAdapted }: AdaptStreamProps) {
     );
   }
 
-  const arrived = new Set(adapted.map((a) => a.platform));
+  const arrived = new Set([
+    ...adapted.map((a) => a.platform),
+    ...(doneData?.captions.map((c) => c.platform) ?? []),
+  ]);
   const failedSet = new Set(failed ?? []);
 
   return (
