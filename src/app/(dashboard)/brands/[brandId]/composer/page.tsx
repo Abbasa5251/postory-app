@@ -60,20 +60,22 @@ export default async function ComposerPage({
 
   // This brand's uploaded media for the C4 library picker + edit-mode
   // thumbnails. Map to serving views here (publicUrl is server-only). `kind` is
-  // a text column constrained to image|video — narrow it for the view.
-  const libraryAssets = (await listMediaForBrand(ctx, brandId)).map(
-    (asset) => ({
-      id: asset.id,
-      kind: asset.kind as "image" | "video",
-      url: publicUrl(asset.r2Key),
-      mimeType: asset.mimeType,
-      sizeBytes: asset.sizeBytes,
-      width: asset.width,
-      height: asset.height,
-      durationSeconds: asset.durationSeconds,
-      moderationStatus: asset.moderationStatus,
-    }),
-  );
+  // a text column constrained to image|video — narrow it for the view. Bound the
+  // initial payload (most recent first); full search/pagination is D4.
+  const LIBRARY_PAGE_SIZE = 60;
+  const libraryAssets = (
+    await listMediaForBrand(ctx, brandId, LIBRARY_PAGE_SIZE)
+  ).map((asset) => ({
+    id: asset.id,
+    kind: asset.kind as "image" | "video",
+    url: publicUrl(asset.r2Key),
+    mimeType: asset.mimeType,
+    sizeBytes: asset.sizeBytes,
+    width: asset.width,
+    height: asset.height,
+    durationSeconds: asset.durationSeconds,
+    moderationStatus: asset.moderationStatus,
+  }));
 
   // Edit mode: hydrate an existing DRAFT. Cross-org / unassigned / nonexistent
   // all 404 (getDraftById); C1 only edits drafts, so a non-DRAFT post 404s too.

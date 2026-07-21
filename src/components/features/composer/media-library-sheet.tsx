@@ -56,23 +56,25 @@ export function MediaLibrarySheet({
             <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {library.map((asset) => {
                 const isAttached = attached.has(asset.id);
+                const dims =
+                  asset.width && asset.height
+                    ? ` ${asset.width}×${asset.height}`
+                    : "";
+                const label = `${isAttached ? "Attached" : "Attach"} ${asset.kind}${dims}`;
                 return (
                   <li key={asset.id}>
                     <button
                       type="button"
                       onClick={() => onPick(asset)}
                       aria-pressed={isAttached}
+                      aria-label={label}
                       className={cn(
                         "group relative block aspect-square w-full overflow-hidden rounded-md border bg-muted transition-colors",
                         isAttached
                           ? "border-primary ring-2 ring-primary"
                           : "border-border hover:border-foreground/40",
                       )}
-                      title={
-                        isAttached
-                          ? "Already attached"
-                          : "Attach to this platform"
-                      }
+                      title={label}
                     >
                       {asset.kind === "video" ? (
                         <video

@@ -72,6 +72,10 @@ async function probeDimensions(
   }
 }
 
+/** How long a single PUT may stall before we give up (ms). Generous for large
+ * video, but finite so a dead connection frees the upload slot. */
+const UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
+
 /** PUT the file straight to R2/MinIO via the presigned URL, reporting progress. */
 function putToStore(
   url: string,
@@ -82,6 +86,9 @@ function putToStore(
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", url);
     xhr.setRequestHeader("Content-Type", file.type);
+    // Finite timeout: without it a stalled PUT leaves the upload spinning
+    // forever (the row is never recorded and the slot never frees).
+    xhr.timeout = UPLOAD_TIMEOUT_MS;
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable)
         onProgress(Math.round((e.loaded / e.total) * 100));
@@ -90,6 +97,7 @@ function putToStore(
       xhr.status >= 200 && xhr.status < 300
         ? resolve()
         : reject(new Error(`Upload failed (${xhr.status}).`));
+    xhr.ontimeout = () => reject(new Error("Upload timed out."));
     xhr.onerror = () => reject(new Error("Upload failed."));
     xhr.send(file);
   });
@@ -115,6 +123,11 @@ export function MediaCard({
   const activeAssets = activeIds
     .map((id) => byId.get(id))
     .filter((a): a is MediaAssetView => a !== undefined);
+
+  // Per-platform attachment cap (C4) — config-driven, never hardcoded. Guards
+  // the active platform for UX; postContentSchema is the authoritative gate.
+  const activeCap = active ? PLATFORM_CONFIG[active].media.maxAttachments : 0;
+  const atCap = active !== undefined && activeIds.length >= activeCap;
 
   /** Platforms a new attach should land on: all targets, or just the active. */
   function attachTargets(): Platform[] {
@@ -221,6 +234,7 @@ export function MediaCard({
                   type="button"
                   size="sm"
                   variant="outline"
+                  disabled={atCap}
                   onClick={() => inputRef.current?.click()}
                 >
                   Upload
@@ -229,11 +243,17 @@ export function MediaCard({
                   type="button"
                   size="sm"
                   variant="outline"
+                  disabled={atCap}
                   onClick={() => setLibraryOpen(true)}
                 >
                   <Library className="size-4" /> Choose from library
                 </Button>
               </div>
+              {atCap && active && (
+                <p className="text-xs text-muted-foreground">
+                  {`${PLATFORM_CONFIG[active].label} allows at most ${activeCap} media item${activeCap === 1 ? "" : "s"}. Remove one to add another.`}
+                </p>
+              )}
               <input
                 ref={inputRef}
                 type="file"

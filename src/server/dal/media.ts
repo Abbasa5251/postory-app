@@ -96,18 +96,21 @@ export async function recordUpload(
 
 /**
  * A brand's media assets, newest first — the composer library picker (C4).
- * Org-scoped + brand access asserted (creators 404 on unassigned brands).
+ * Org-scoped + brand access asserted (creators 404 on unassigned brands). The
+ * optional `limit` bounds the initial RSC payload; full search/pagination is D4.
  */
 export async function listMediaForBrand(
   ctx: AuthCtx,
   brandId: string,
+  limit?: number,
 ): Promise<MediaAsset[]> {
   assertBrandAccess(ctx, brandId);
-  return db
+  const query = db
     .select(MEDIA_COLUMNS)
     .from(mediaAssets)
     .where(and(orgScope(ctx, mediaAssets), eq(mediaAssets.brandId, brandId)))
     .orderBy(desc(mediaAssets.createdAt));
+  return limit === undefined ? query : query.limit(limit);
 }
 
 /**

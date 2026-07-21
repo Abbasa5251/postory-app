@@ -65,6 +65,16 @@ export const postContentSchema = z
           path: ["variants", platform, "caption"],
         });
       }
+      // Per-platform media count ceiling (C4) — reuse the config cap, never
+      // hardcode. The composer guards this for UX; this is the real enforcement.
+      const maxAttachments = PLATFORM_CONFIG[platform].media.maxAttachments;
+      if ((variant.mediaIds?.length ?? 0) > maxAttachments) {
+        ctx.addIssue({
+          code: "custom",
+          message: `${PLATFORM_CONFIG[platform].label} allows at most ${maxAttachments} media item${maxAttachments === 1 ? "" : "s"}.`,
+          path: ["variants", platform, "mediaIds"],
+        });
+      }
     }
   });
 

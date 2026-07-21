@@ -6,6 +6,7 @@ import type { PostContent } from "@/lib/validation/posts";
 import { parsePostContent } from "@/lib/validation/posts";
 import { ForbiddenError, NotFoundError } from "@/server/domain/errors";
 import { recordAuditEvent } from "./audit";
+import { getMediaByIds } from "./media";
 import { assertBrandAccess, orgScope } from "./scope";
 import type { AuthCtx } from "./types";
 
@@ -38,6 +39,31 @@ function collectMediaIds(content: PostContent): string[] {
     for (const id of variant?.mediaIds ?? []) ids.add(id);
   }
   return [...ids];
+}
+
+/**
+ * Tenancy guard for attached media (C4): every referenced media id must be a
+ * real asset in THIS org AND belong to THIS post's brand — a hostile client
+ * could otherwise plant a foreign / nonexistent id into content.variants
+ * mediaIds. Returns the validated (deduped) id set; 404-shapes any that don't
+ * resolve. getMediaByIds is org + brand-access scoped; we additionally pin each
+ * asset to the post's brand.
+ */
+async function validatedMediaIds(
+  ctx: AuthCtx,
+  brandId: string,
+  content: PostContent,
+): Promise<string[]> {
+  const ids = collectMediaIds(content);
+  if (ids.length === 0) return ids;
+  const found = await getMediaByIds(ctx, ids);
+  const valid = new Set(
+    found.filter((a) => a.brandId === brandId).map((a) => a.id),
+  );
+  for (const id of ids) {
+    if (!valid.has(id)) throw new NotFoundError("media_asset", id);
+  }
+  return ids;
 }
 
 export type DraftPost = {
@@ -103,6 +129,8 @@ export async function createDraft(
   input: { brandId: string; content: PostContent },
 ): Promise<{ id: string }> {
   assertBrandAccess(ctx, input.brandId);
+  // Reject any attached media that isn't this brand's before persisting refs.
+  const mediaIds = await validatedMediaIds(ctx, input.brandId, input.content);
 
   const [post] = await db
     .insert(posts)
@@ -122,7 +150,7 @@ export async function createDraft(
       postId: post.id,
       versionNo: 1,
       content: input.content,
-      mediaIds: collectMediaIds(input.content),
+      mediaIds,
       createdBy: actorMemberId(ctx),
     })
     .returning({ id: postVersions.id });
@@ -162,6 +190,12 @@ export async function updateDraft(
     // allowed in this state (Epic E owns non-DRAFT edits).
     throw new ForbiddenError("Only draft posts can be edited here.");
   }
+  // Reject any attached media that isn't this brand's before persisting refs.
+  const mediaIds = await validatedMediaIds(
+    ctx,
+    existing.brandId,
+    input.content,
+  );
 
   const [latest] = await db
     .select({ versionNo: postVersions.versionNo })
@@ -180,7 +214,7 @@ export async function updateDraft(
       postId: input.postId,
       versionNo: nextVersionNo,
       content: input.content,
-      mediaIds: collectMediaIds(input.content),
+      mediaIds,
       createdBy: actorMemberId(ctx),
     })
     .returning({ id: postVersions.id });

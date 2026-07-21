@@ -256,7 +256,14 @@ export function getMediaSpec(platform: Platform): MediaSpec {
 export function acceptedMimesForKind(
   kind: "image" | "video",
 ): readonly string[] {
-  return kind === "image" ? IMAGE_MIMES : VIDEO_MIMES;
+  // Derive the union from every platform's spec (not a shared constant) so a
+  // per-platform MIME narrowing/addition is reflected here automatically.
+  const mimes = new Set<string>();
+  for (const p of PLATFORM_LIST) {
+    const kindSpec = kind === "image" ? p.media.image : p.media.video;
+    for (const mime of kindSpec?.mimeTypes ?? []) mimes.add(mime);
+  }
+  return [...mimes];
 }
 
 /** Upload-level max size (bytes) for a kind = the largest any platform allows. */

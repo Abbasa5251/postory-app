@@ -78,6 +78,23 @@ describe("postContentSchema", () => {
     });
     expect(atLimit.success).toBe(true);
   });
+
+  it("rejects more attached media than the platform allows (C4)", () => {
+    // YouTube caps at 1 attachment (maxAttachments) — two must fail, one is ok.
+    const id = (n: number) => `0193f0e0-0000-7000-8000-00000000000${n}`;
+    expect(PLATFORM_CONFIG.youtube.media.maxAttachments).toBe(1);
+    const over = postContentSchema.safeParse({
+      targets: ["youtube"],
+      variants: { youtube: { caption: "x", mediaIds: [id(1), id(2)] } },
+    });
+    expect(over.success).toBe(false);
+
+    const atCap = postContentSchema.safeParse({
+      targets: ["youtube"],
+      variants: { youtube: { caption: "x", mediaIds: [id(1)] } },
+    });
+    expect(atCap.success).toBe(true);
+  });
 });
 
 describe("saveDraftSchema", () => {
