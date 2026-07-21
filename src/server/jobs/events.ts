@@ -17,6 +17,20 @@ import { postPlatformSchema } from "@/lib/validation/posts";
 export const healthPingEvent = eventType("system/health.ping");
 
 /**
+ * Already-normalized brand voice (B2) shared by the copy + adapt events — a
+ * transform-free mirror of VoiceProfile so the Inngest schema (no transforms
+ * allowed) accepts it. The action validates the stored jsonb before sending.
+ */
+const voiceProfileEventSchema = z
+  .object({
+    tone: z.string().optional(),
+    bannedWords: z.array(z.string()).optional(),
+    hashtags: z.array(z.string()).optional(),
+    samplePosts: z.array(z.string()).optional(),
+  })
+  .nullable();
+
+/**
  * AI copy generation requested (C2). Emitted by the generateCopy action after
  * it has validated input, authorized, reserved nothing yet, and created the
  * queued generation_jobs row; the worker reserves credits, streams via
@@ -34,16 +48,34 @@ export const copyRequestedEvent = eventType("generation/copy.requested", {
     brief: z.string(),
     // Already-normalized brand voice (B2) — a transform-free mirror of
     // VoiceProfile so the Inngest schema (no transforms allowed) accepts it.
-    voiceProfile: z
-      .object({
-        tone: z.string().optional(),
-        bannedWords: z.array(z.string()).optional(),
-        hashtags: z.array(z.string()).optional(),
-        samplePosts: z.array(z.string()).optional(),
-      })
-      .nullable(),
+    voiceProfile: voiceProfileEventSchema,
     variantCount: z.number().int(),
     refineFrom: z.string().optional(),
     instruction: z.string().optional(),
   }),
 });
+
+/**
+ * AI cross-platform adaptation requested (C3). Emitted by the adaptCopy action
+ * after it has validated input, authorized, and created the queued
+ * generation_jobs row; the worker reserves N credits (one per platform),
+ * adapts per platform via OpenRouter, and settles / refunds failed platforms.
+ * Fields are already-trusted (server-derived): orgId/creditsPerPlatform/modelId
+ * come from the ctx + credit_rates, not client input.
+ */
+export const copyAdaptRequestedEvent = eventType(
+  "generation/copy.adapt.requested",
+  {
+    schema: z.object({
+      orgId: z.string(),
+      jobId: z.string(),
+      brandId: z.string(),
+      // Cost of adapting ONE platform; total reserved = this × platforms.length.
+      creditsPerPlatform: z.number().int(),
+      modelId: z.string(),
+      platforms: z.array(postPlatformSchema),
+      sourceCaption: z.string(),
+      voiceProfile: voiceProfileEventSchema,
+    }),
+  },
+);

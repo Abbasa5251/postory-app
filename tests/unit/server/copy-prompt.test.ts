@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   VARIANT_SEPARATOR,
+  buildAdaptPrompt,
   buildCopyPrompt,
   parseVariants,
 } from "@/server/domain/copy-prompt";
@@ -80,6 +81,41 @@ describe("buildCopyPrompt", () => {
     });
     expect(system).toContain("exactly 1 distinct caption option");
     expect(system).not.toContain("caption options");
+  });
+});
+
+describe("buildAdaptPrompt", () => {
+  it("names the target platform + char limit and quotes the source caption", () => {
+    const { system, prompt } = buildAdaptPrompt({
+      platform: "linkedin",
+      sourceCaption: "Our cold brew launches Friday.",
+      voiceProfile: null,
+    });
+    expect(system).toContain(PLATFORM_CONFIG.linkedin.label);
+    expect(system).toContain(String(PLATFORM_CONFIG.linkedin.charLimit));
+    expect(prompt).toContain("Our cold brew launches Friday.");
+  });
+
+  it("asks for exactly one caption — no variant sentinel", () => {
+    const { system } = buildAdaptPrompt({
+      platform: "instagram",
+      sourceCaption: "x",
+      voiceProfile: null,
+    });
+    expect(system).not.toContain(VARIANT_SEPARATOR);
+    expect(system).not.toContain("options");
+  });
+
+  it("folds in brand voice: tone, hashtags (with #), banned words, samples", () => {
+    const { system } = buildAdaptPrompt({
+      platform: "tiktok",
+      sourceCaption: "Launch day",
+      voiceProfile: voice,
+    });
+    expect(system).toContain("playful and bold");
+    expect(system).toContain("#coffee");
+    expect(system).toContain("cheap");
+    expect(system).toContain("Rise and grind");
   });
 });
 

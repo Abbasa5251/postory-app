@@ -12,6 +12,7 @@ import { PLATFORM_CONFIG, type Platform } from "@/lib/platforms/config";
 import type { PostContent } from "@/lib/validation/posts";
 import { cn } from "@/lib/utils";
 import { saveDraft } from "@/server/actions/posts";
+import { AdaptCard } from "./adapt-card";
 import { AiCopyCard } from "./ai-copy-card";
 import { DisabledCard } from "./disabled-card";
 
@@ -203,6 +204,21 @@ export function Composer({
               })}
             </CardContent>
           </Card>
+
+          {/* Write once — adapt one caption to every target platform (C3) */}
+          <AdaptCard
+            brandId={brandId}
+            targets={targets}
+            hasVoiceProfile={hasVoiceProfile}
+            onAdapted={(platform, caption) => {
+              // Ensure the platform is targeted (so its tab + variant exist),
+              // then write the adapted caption into it. Don't switch the active
+              // tab — captions arrive one platform at a time and jumping tabs
+              // on each would be disorienting.
+              if (!targets.includes(platform)) toggleTarget(platform);
+              setCaption(platform, caption);
+            }}
+          />
 
           {/* Caption — per-platform variants + char counter */}
           <Card>

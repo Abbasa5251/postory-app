@@ -1,12 +1,12 @@
 "use client";
 
-import { useRealtime } from "inngest/react";
 import { Loader2, Sparkles } from "lucide-react";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { useActionForm } from "@/hooks/use-action-form";
+import { useJobStream } from "@/hooks/use-job-stream";
 import { PLATFORM_CONFIG, type Platform } from "@/lib/platforms/config";
 import { copyChannel } from "@/lib/realtime/copy-channel";
 import { cn } from "@/lib/utils";
@@ -194,10 +194,10 @@ function CopyStream({ job, onApply, onRefine }: CopyStreamProps) {
   const [refiningIndex, setRefiningIndex] = useState<number | null>(null);
   const [instruction, setInstruction] = useState("");
 
-  const { messages, connectionStatus } = useRealtime({
+  const { messages, connectionStatus } = useJobStream({
     channel: copyChannel(job.jobId),
     topics: ["chunk", "done", "error"] as const,
-    token: () => Promise.resolve(job.token),
+    token: job.token,
   });
 
   // The hook types message `data` as `unknown`, so we assert per topic. The
