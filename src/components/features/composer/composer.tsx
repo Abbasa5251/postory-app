@@ -15,6 +15,8 @@ import { saveDraft } from "@/server/actions/posts";
 import { AdaptCard } from "./adapt-card";
 import { AiCopyCard } from "./ai-copy-card";
 import { DisabledCard } from "./disabled-card";
+import { MediaCard } from "./media-card";
+import type { MediaAssetView } from "./media-types";
 
 export type ComposerPlatform = {
   id: Platform;
@@ -33,12 +35,23 @@ type ComposerProps = {
   initial?: { postId: string; content: PostContent };
   /** Whether the brand has a voice profile the AI will apply (C2). */
   hasVoiceProfile: boolean;
+  /** This brand's uploaded media, for the C4 library picker + thumbnails. */
+  libraryAssets: MediaAssetView[];
 };
 
 function captionsFromContent(content: PostContent | undefined) {
   const map: Partial<Record<Platform, string>> = {};
   for (const [platform, variant] of Object.entries(content?.variants ?? {})) {
     map[platform as Platform] = variant.caption;
+  }
+  return map;
+}
+
+function mediaFromContent(content: PostContent | undefined) {
+  const map: Partial<Record<Platform, string[]>> = {};
+  for (const [platform, variant] of Object.entries(content?.variants ?? {})) {
+    if (variant.mediaIds?.length)
+      map[platform as Platform] = [...variant.mediaIds];
   }
   return map;
 }
@@ -50,6 +63,7 @@ export function Composer({
   platforms,
   initial,
   hasVoiceProfile,
+  libraryAssets,
 }: ComposerProps) {
   const [targets, setTargets] = useState<Platform[]>(
     initial?.content.targets ?? [],
@@ -57,6 +71,12 @@ export function Composer({
   const [captions, setCaptions] = useState<Partial<Record<Platform, string>>>(
     () => captionsFromContent(initial?.content),
   );
+  // Per-platform attached media asset ids (C4) + the known asset details for
+  // rendering thumbnails / the picker (initial library grows as we upload/pick).
+  const [media, setMedia] = useState<Partial<Record<Platform, string[]>>>(() =>
+    mediaFromContent(initial?.content),
+  );
+  const [library, setLibrary] = useState<MediaAssetView[]>(libraryAssets);
   // The user's explicit tab selection; the *effective* active tab is derived
   // below so it stays valid as targets change (no effect, no cascading render).
   const [selectedTab, setSelectedTab] = useState<Platform | undefined>(
@@ -97,6 +117,32 @@ export function Composer({
     setCaptions((prev) => ({ ...prev, [platform]: value }));
   }
 
+  /** Attach an asset to the given platforms (C4), ensuring each is targeted. */
+  function attachMedia(asset: MediaAssetView, platformsToAttach: Platform[]) {
+    setLibrary((prev) =>
+      prev.some((a) => a.id === asset.id) ? prev : [asset, ...prev],
+    );
+    for (const platform of platformsToAttach) {
+      if (!targets.includes(platform)) toggleTarget(platform);
+    }
+    setMedia((prev) => {
+      const next = { ...prev };
+      for (const platform of platformsToAttach) {
+        const current = next[platform] ?? [];
+        if (!current.includes(asset.id))
+          next[platform] = [...current, asset.id];
+      }
+      return next;
+    });
+  }
+
+  function removeMedia(platform: Platform, assetId: string) {
+    setMedia((prev) => ({
+      ...prev,
+      [platform]: (prev[platform] ?? []).filter((id) => id !== assetId),
+    }));
+  }
+
   const activeLimit = active ? PLATFORM_CONFIG[active].charLimit : 0;
   const activeLength = active ? (captions[active] ?? "").length : 0;
   const activeOver = activeLength > activeLimit;
@@ -113,7 +159,16 @@ export function Composer({
     const content: PostContent = {
       targets,
       variants: Object.fromEntries(
-        targets.map((p) => [p, { caption: captions[p] ?? "" }]),
+        targets.map((p) => {
+          const mediaIds = media[p] ?? [];
+          return [
+            p,
+            {
+              caption: captions[p] ?? "",
+              ...(mediaIds.length > 0 ? { mediaIds } : {}),
+            },
+          ];
+        }),
       ),
     };
     void run({ brandId, postId, content });
@@ -295,9 +350,15 @@ export function Composer({
               setSelectedTab(platform);
             }}
           />
-          <DisabledCard title="Media" soon="C4">
-            Image and video upload with per-platform spec checks lands with C4.
-          </DisabledCard>
+          <MediaCard
+            brandId={brandId}
+            targets={targets}
+            active={active}
+            media={media}
+            library={library}
+            onAttach={attachMedia}
+            onRemove={removeMedia}
+          />
           <DisabledCard title="Schedule" soon="F1">
             {`Pick a date and time to publish — ${timezone} (workspace timezone). Scheduling lands with F1.`}
           </DisabledCard>

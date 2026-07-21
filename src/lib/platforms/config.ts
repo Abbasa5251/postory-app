@@ -23,6 +23,37 @@ export const PLATFORMS = [
 
 export type Platform = (typeof PLATFORMS)[number];
 
+/** Allowed aspect ratio as a `[width, height]` pair (e.g. `[9, 16]`). */
+export type AspectRatio = readonly [number, number];
+
+/** Media rules for one media kind (image or video) on a platform. */
+export type MediaKindSpec = {
+  /** Accepted MIME types (the hard, server-enforced gate — D-C4-3). */
+  mimeTypes: readonly string[];
+  /** Max file size in bytes (hard, server-enforced via a post-upload HEAD). */
+  maxBytes: number;
+  /**
+   * Accepted aspect ratios. Empty = any ratio accepted. Advisory in the
+   * composer (client-probed dims); the hard gate is publish time (F-epic).
+   */
+  aspectRatios: readonly AspectRatio[];
+  /** Video only: max clip duration in seconds. Advisory (client-probed). */
+  maxDurationSeconds?: number;
+};
+
+/**
+ * Per-platform media specs (PRD §6, C4). Seeded from PRD §6 + common platform
+ * limits — re-verify against the live Zernio/platform docs at each phase gate
+ * (same discipline as `charLimit`). `null` = the platform doesn't accept that
+ * media kind (e.g. TikTok/YouTube Shorts are video-only).
+ */
+export type MediaSpec = {
+  image: MediaKindSpec | null;
+  video: MediaKindSpec | null;
+  /** Max attachments per platform variant (carousel/gallery ceiling). */
+  maxAttachments: number;
+};
+
 export type PlatformConfig = {
   /** Our canonical id — matches the `social_accounts.platform` CHECK vocabulary. */
   id: Platform;
@@ -47,7 +78,21 @@ export type PlatformConfig = {
    * Zernio/platform docs at each phase gate (PRD §7.2 note).
    */
   charLimit: number;
+  /** Per-platform media rules (C4, PRD §6). */
+  media: MediaSpec;
 };
+
+// Shared MIME allowlists (single source — composed into the specs below).
+const IMAGE_MIMES = ["image/jpeg", "image/png", "image/webp"] as const;
+const VIDEO_MIMES = ["video/mp4", "video/quicktime"] as const;
+
+const MB = 1024 * 1024;
+
+// Common aspect ratios (PRD §6).
+const SQUARE: AspectRatio = [1, 1];
+const PORTRAIT_4_5: AspectRatio = [4, 5];
+const VERTICAL_9_16: AspectRatio = [9, 16];
+const LANDSCAPE_16_9: AspectRatio = [16, 9];
 
 export const PLATFORM_CONFIG: Record<Platform, PlatformConfig> = {
   instagram: {
@@ -56,6 +101,21 @@ export const PLATFORM_CONFIG: Record<Platform, PlatformConfig> = {
     zernioSlug: "instagram",
     color: "#d6336c",
     charLimit: 2200,
+    // Feed image/carousel (1:1, 4:5) + Reels (9:16 video). PRD §6.
+    media: {
+      image: {
+        mimeTypes: IMAGE_MIMES,
+        maxBytes: 30 * MB,
+        aspectRatios: [SQUARE, PORTRAIT_4_5],
+      },
+      video: {
+        mimeTypes: VIDEO_MIMES,
+        maxBytes: 300 * MB,
+        aspectRatios: [VERTICAL_9_16],
+        maxDurationSeconds: 90,
+      },
+      maxAttachments: 10,
+    },
   },
   facebook: {
     id: "facebook",
@@ -63,6 +123,21 @@ export const PLATFORM_CONFIG: Record<Platform, PlatformConfig> = {
     zernioSlug: "facebook",
     color: "#1877f2",
     charLimit: 63206,
+    // Page image/video posts — permissive on ratio. PRD §6.
+    media: {
+      image: {
+        mimeTypes: IMAGE_MIMES,
+        maxBytes: 30 * MB,
+        aspectRatios: [SQUARE, PORTRAIT_4_5, LANDSCAPE_16_9, VERTICAL_9_16],
+      },
+      video: {
+        mimeTypes: VIDEO_MIMES,
+        maxBytes: 500 * MB,
+        aspectRatios: [],
+        maxDurationSeconds: 240,
+      },
+      maxAttachments: 10,
+    },
   },
   tiktok: {
     id: "tiktok",
@@ -70,6 +145,17 @@ export const PLATFORM_CONFIG: Record<Platform, PlatformConfig> = {
     zernioSlug: "tiktok",
     color: "#16181c",
     charLimit: 2200,
+    // Video-only at launch (9:16). PRD §6 / D3.
+    media: {
+      image: null,
+      video: {
+        mimeTypes: VIDEO_MIMES,
+        maxBytes: 500 * MB,
+        aspectRatios: [VERTICAL_9_16],
+        maxDurationSeconds: 600,
+      },
+      maxAttachments: 1,
+    },
   },
   linkedin: {
     id: "linkedin",
@@ -77,6 +163,21 @@ export const PLATFORM_CONFIG: Record<Platform, PlatformConfig> = {
     zernioSlug: "linkedin",
     color: "#0a66c2",
     charLimit: 3000,
+    // Image/video/text on company + personal pages. PRD §6.
+    media: {
+      image: {
+        mimeTypes: IMAGE_MIMES,
+        maxBytes: 30 * MB,
+        aspectRatios: [SQUARE, PORTRAIT_4_5, LANDSCAPE_16_9],
+      },
+      video: {
+        mimeTypes: VIDEO_MIMES,
+        maxBytes: 500 * MB,
+        aspectRatios: [],
+        maxDurationSeconds: 600,
+      },
+      maxAttachments: 9,
+    },
   },
   threads: {
     id: "threads",
@@ -85,6 +186,21 @@ export const PLATFORM_CONFIG: Record<Platform, PlatformConfig> = {
     color: "#000000",
     // PRD §6: Threads 500-char limit (the mockup's config omits Threads).
     charLimit: 500,
+    // Text/image (+ short video); light validation per PRD §6.
+    media: {
+      image: {
+        mimeTypes: IMAGE_MIMES,
+        maxBytes: 30 * MB,
+        aspectRatios: [],
+      },
+      video: {
+        mimeTypes: VIDEO_MIMES,
+        maxBytes: 300 * MB,
+        aspectRatios: [],
+        maxDurationSeconds: 300,
+      },
+      maxAttachments: 10,
+    },
   },
   youtube: {
     id: "youtube",
@@ -92,6 +208,17 @@ export const PLATFORM_CONFIG: Record<Platform, PlatformConfig> = {
     zernioSlug: "youtube",
     color: "#e02f2f",
     charLimit: 5000,
+    // Shorts only: 9:16, ≤ 60s. PRD §6 (title required is a caption concern).
+    media: {
+      image: null,
+      video: {
+        mimeTypes: VIDEO_MIMES,
+        maxBytes: 500 * MB,
+        aspectRatios: [VERTICAL_9_16],
+        maxDurationSeconds: 60,
+      },
+      maxAttachments: 1,
+    },
   },
 };
 
@@ -113,4 +240,120 @@ export function getPlatformConfig(value: string): PlatformConfig | undefined {
 /** Caption character ceiling for a platform (C1 composer counter/validation). */
 export function getCharLimit(platform: Platform): number {
   return PLATFORM_CONFIG[platform].charLimit;
+}
+
+/** Media specs for a platform (C4 composer validation + preview cards). */
+export function getMediaSpec(platform: Platform): MediaSpec {
+  return PLATFORM_CONFIG[platform].media;
+}
+
+/**
+ * Accepted MIME types for a media kind, across ALL platforms (the union) — the
+ * upload-level allowlist (an asset is a reusable brand asset, not tied to one
+ * platform at upload time; per-platform fit is `assetFitsPlatform`, advisory at
+ * attach). Single source for the media validation schema.
+ */
+export function acceptedMimesForKind(
+  kind: "image" | "video",
+): readonly string[] {
+  return kind === "image" ? IMAGE_MIMES : VIDEO_MIMES;
+}
+
+/** Upload-level max size (bytes) for a kind = the largest any platform allows. */
+export function maxUploadBytesForKind(kind: "image" | "video"): number {
+  return Math.max(
+    ...PLATFORM_LIST.map((p) => {
+      const kindSpec = kind === "image" ? p.media.image : p.media.video;
+      return kindSpec?.maxBytes ?? 0;
+    }),
+  );
+}
+
+/** Classify a MIME type into our media kind, or null if it's neither. */
+export function mediaKindForMime(mime: string): "image" | "video" | null {
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("video/")) return "video";
+  return null;
+}
+
+/** The subset of an asset used for spec checks (a subset of `media_assets`). */
+export type MediaAssetSpecInput = {
+  kind: "image" | "video";
+  mimeType?: string | null;
+  sizeBytes?: number | null;
+  width?: number | null;
+  height?: number | null;
+  durationSeconds?: number | null;
+};
+
+/** Relative tolerance when matching a probed aspect ratio to an allowed one. */
+const ASPECT_TOLERANCE = 0.03;
+
+function matchesAnyRatio(
+  width: number,
+  height: number,
+  ratios: readonly AspectRatio[],
+): boolean {
+  if (ratios.length === 0) return true; // any ratio accepted
+  if (height <= 0) return false;
+  const actual = width / height;
+  return ratios.some(([w, h]) => {
+    const target = w / h;
+    return Math.abs(actual - target) / target <= ASPECT_TOLERANCE;
+  });
+}
+
+/**
+ * Does an asset fit a platform's media spec? Pure — shared by the composer
+ * (advisory warnings) and preview cards (C5). MIME + size are the hard,
+ * server-enforced gates (D-C4-3); aspect ratio + duration are advisory here
+ * (dims come from a client probe) and hard-gated at publish (F-epic). Missing
+ * dims/duration are not flagged (probe may be unavailable), only violated ones.
+ */
+export function assetFitsPlatform(
+  platform: Platform,
+  asset: MediaAssetSpecInput,
+): { ok: boolean; warnings: string[] } {
+  const spec = PLATFORM_CONFIG[platform].media;
+  const label = PLATFORM_CONFIG[platform].label;
+  const kindSpec = asset.kind === "image" ? spec.image : spec.video;
+  const warnings: string[] = [];
+
+  if (!kindSpec) {
+    warnings.push(`${label} doesn't accept ${asset.kind} media.`);
+    return { ok: false, warnings };
+  }
+
+  if (asset.mimeType && !kindSpec.mimeTypes.includes(asset.mimeType)) {
+    warnings.push(`${label} doesn't support ${asset.mimeType} files.`);
+  }
+  if (
+    typeof asset.sizeBytes === "number" &&
+    asset.sizeBytes > kindSpec.maxBytes
+  ) {
+    const maxMb = Math.round(kindSpec.maxBytes / MB);
+    warnings.push(`${label} files must be ${maxMb} MB or smaller.`);
+  }
+  if (
+    typeof asset.width === "number" &&
+    typeof asset.height === "number" &&
+    !matchesAnyRatio(asset.width, asset.height, kindSpec.aspectRatios)
+  ) {
+    const ratios = kindSpec.aspectRatios
+      .map(([w, h]) => `${w}:${h}`)
+      .join(", ");
+    warnings.push(`${label} prefers ${ratios} for ${asset.kind}.`);
+  }
+  if (
+    asset.kind === "video" &&
+    typeof kindSpec.maxDurationSeconds === "number" &&
+    typeof asset.durationSeconds === "number" &&
+    asset.durationSeconds > kindSpec.maxDurationSeconds
+  ) {
+    warnings.push(
+      `${label} videos must be ${kindSpec.maxDurationSeconds}s or shorter.`,
+    );
+  }
+
+  return { ok: warnings.length === 0, warnings };
 }

@@ -26,6 +26,20 @@ function actorMemberId(ctx: AuthCtx): string | null {
   return ctx.role === "system" ? null : ctx.memberId;
 }
 
+/**
+ * The de-duped union of every platform variant's attached media ids (C4) —
+ * written to post_versions.media_ids (the flat logical-ref column D4's
+ * orphan-cleanup job reads). Per-platform attachment stays in content.variants;
+ * this is the queryable roll-up.
+ */
+function collectMediaIds(content: PostContent): string[] {
+  const ids = new Set<string>();
+  for (const variant of Object.values(content.variants)) {
+    for (const id of variant?.mediaIds ?? []) ids.add(id);
+  }
+  return [...ids];
+}
+
 export type DraftPost = {
   id: string;
   brandId: string;
@@ -108,6 +122,7 @@ export async function createDraft(
       postId: post.id,
       versionNo: 1,
       content: input.content,
+      mediaIds: collectMediaIds(input.content),
       createdBy: actorMemberId(ctx),
     })
     .returning({ id: postVersions.id });
@@ -165,6 +180,7 @@ export async function updateDraft(
       postId: input.postId,
       versionNo: nextVersionNo,
       content: input.content,
+      mediaIds: collectMediaIds(input.content),
       createdBy: actorMemberId(ctx),
     })
     .returning({ id: postVersions.id });

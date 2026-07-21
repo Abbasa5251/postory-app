@@ -56,3 +56,19 @@ export class InsufficientCreditsError extends DomainError {
     this.name = "InsufficientCreditsError";
   }
 }
+
+/**
+ * An uploaded object failed the server-authoritative media gate (C4, D-C4-3):
+ * the actual (HEAD-read) MIME type or size is unsupported, or the object is
+ * missing (the client never completed the PUT). Safe to reveal — it's the
+ * caller's own file — so it carries a helpful message. `withAction` maps the
+ * MEDIA_REJECTED code without reporting to Sentry (an expected failure).
+ */
+export class MediaRejectedError extends DomainError {
+  readonly code = "MEDIA_REJECTED";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "MediaRejectedError";
+  }
+}
