@@ -9,6 +9,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useActionForm } from "@/hooks/use-action-form";
 import { PLATFORM_CONFIG, type Platform } from "@/lib/platforms/config";
+import { resolveMediaAssets } from "@/lib/platforms/preview";
 import type { PostContent } from "@/lib/validation/posts";
 import { cn } from "@/lib/utils";
 import { saveDraft } from "@/server/actions/posts";
@@ -17,6 +18,7 @@ import { AiCopyCard } from "./ai-copy-card";
 import { DisabledCard } from "./disabled-card";
 import { MediaCard } from "./media-card";
 import type { MediaAssetView } from "./media-types";
+import { PostPreview } from "./post-preview";
 
 export type ComposerPlatform = {
   id: Platform;
@@ -24,6 +26,10 @@ export type ComposerPlatform = {
   color: string;
   /** Whether the brand has a connected account for this platform. */
   connected: boolean;
+  /** Connected-account handle for this platform, for the C5 preview identity. */
+  handle?: string;
+  /** Connected-account avatar URL, for the C5 preview identity. */
+  avatarUrl?: string | null;
 };
 
 type ComposerProps = {
@@ -37,6 +43,8 @@ type ComposerProps = {
   hasVoiceProfile: boolean;
   /** This brand's uploaded media, for the C4 library picker + thumbnails. */
   libraryAssets: MediaAssetView[];
+  /** Brand logo, the C5 preview avatar fallback when a platform has no account avatar. */
+  brandLogoUrl?: string | null;
 };
 
 function captionsFromContent(content: PostContent | undefined) {
@@ -64,6 +72,7 @@ export function Composer({
   initial,
   hasVoiceProfile,
   libraryAssets,
+  brandLogoUrl,
 }: ComposerProps) {
   const [targets, setTargets] = useState<Platform[]>(
     initial?.content.targets ?? [],
@@ -175,6 +184,11 @@ export function Composer({
   }
 
   const activePlatformLabel = active ? PLATFORM_CONFIG[active].label : null;
+  // The active platform's connected-account identity (handle/avatar) for the
+  // C5 preview; undefined when nothing is targeted.
+  const activePlatformMeta = active
+    ? platforms.find((p) => p.id === active)
+    : undefined;
 
   return (
     <div className="flex flex-col">
@@ -365,9 +379,25 @@ export function Composer({
         </div>
 
         <div className="min-w-[min(100%,18rem)] flex-1">
-          <DisabledCard title="Preview" soon="C5">
-            Feed-accurate preview cards for every platform land with C5.
-          </DisabledCard>
+          {/* C5 — feed-accurate preview following the active tab. Identity is the
+              active platform's connected account (real handle/avatar), falling
+              back to the brand name + logo. */}
+          <div className="sticky top-6">
+            <PostPreview
+              platform={active}
+              caption={active ? (captions[active] ?? "") : ""}
+              assets={resolveMediaAssets(
+                active ? media[active] : undefined,
+                library,
+              )}
+              identity={{
+                handle: activePlatformMeta?.handle ?? null,
+                avatarUrl:
+                  activePlatformMeta?.avatarUrl ?? brandLogoUrl ?? null,
+                name: brandName,
+              }}
+            />
+          </div>
         </div>
       </div>
     </div>

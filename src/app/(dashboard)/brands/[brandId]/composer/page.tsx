@@ -50,13 +50,25 @@ export default async function ComposerPage({
     );
   }
 
-  const connectedPlatforms = new Set(accounts.map((a) => a.platform));
-  const platforms = PLATFORM_LIST.map((p) => ({
-    id: p.id,
-    label: p.label,
-    color: p.color,
-    connected: connectedPlatforms.has(p.id),
-  }));
+  // First connected account per platform — its real handle/avatar give the C5
+  // preview a feed-accurate identity (a platform can hold several accounts;
+  // the preview attributes to one, so pick the first).
+  const accountByPlatform = new Map<string, (typeof accounts)[number]>();
+  for (const account of accounts) {
+    if (!accountByPlatform.has(account.platform))
+      accountByPlatform.set(account.platform, account);
+  }
+  const platforms = PLATFORM_LIST.map((p) => {
+    const account = accountByPlatform.get(p.id);
+    return {
+      id: p.id,
+      label: p.label,
+      color: p.color,
+      connected: accountByPlatform.has(p.id),
+      handle: account?.handle,
+      avatarUrl: account?.avatarUrl ?? null,
+    };
+  });
 
   // This brand's uploaded media for the C4 library picker + edit-mode
   // thumbnails. Map to serving views here (publicUrl is server-only). `kind` is
@@ -110,6 +122,7 @@ export default async function ComposerPage({
       // means the brand has guidance the AI will apply (C2).
       hasVoiceProfile={Boolean(brand.voiceProfile)}
       libraryAssets={libraryAssets}
+      brandLogoUrl={brand.logoUrl}
     />
   );
 }

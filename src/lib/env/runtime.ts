@@ -18,3 +18,8 @@ export function shouldEnforceProductionEnv(): boolean {
   const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
   return !isBuildPhase || process.env.VERCEL === "1";
 }
+
+/** True in a production runtime — used to gate dev-only surfaces (e.g. the C5 preview gallery). */
+export function isProduction(): boolean {
+  return process.env.NODE_ENV === "production";
+}

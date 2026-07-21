@@ -14,4 +14,10 @@ export type MediaAssetView = {
   height: number | null;
   durationSeconds: number | null;
   moderationStatus: string;
+  /**
+   * Optional poster/thumbnail for a video (preview + player fallback). Not
+   * populated yet — video previews fall back to the first frame via
+   * `<video preload="metadata">`; D generates real thumbnails.
+   */
+  posterUrl?: string | null;
 };
