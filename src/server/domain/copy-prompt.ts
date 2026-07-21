@@ -23,8 +23,9 @@ export type VoiceGuidance = {
  *
  * One model call returns the whole variant batch (PRD §7.2 — a batch is 1
  * credit), so variants are separated by a sentinel line the model is told to
- * emit; `parseVariants` splits on it. C3 owns cross-platform adaptation — C2
- * generates for a single platform.
+ * emit; `parseVariants` splits on it. C2 generates for a single platform;
+ * `buildAdaptPrompt` (C3) adapts one written caption into a per-platform native
+ * version (one call per platform, so no variant sentinel).
  */
 
 /** The model separates variants with a line containing only this sentinel. */
@@ -99,6 +100,41 @@ export function buildCopyPrompt(input: CopyPromptInput): {
           `Original brief for context: ${input.brief}`,
         ].join("\n")
       : `Brief: ${input.brief}`;
+
+  return { system, prompt };
+}
+
+export type AdaptPromptInput = {
+  platform: Platform;
+  /** The single caption the user wrote once, to be adapted for this platform. */
+  sourceCaption: string;
+  voiceProfile: VoiceGuidance | null;
+};
+
+/**
+ * Build the system + user messages for adapting one caption to a single
+ * platform (C3). Unlike `buildCopyPrompt`, this asks for exactly ONE caption
+ * (one model call per platform, PRD §7.2 — 1 credit each), so there is no
+ * variant sentinel. The char limit is a soft instruction; the hard ceiling is
+ * `postContentSchema.superRefine` at save (same as C2).
+ */
+export function buildAdaptPrompt(input: AdaptPromptInput): {
+  system: string;
+  prompt: string;
+} {
+  const config = PLATFORM_CONFIG[input.platform];
+  const voice = voiceGuidance(input.voiceProfile);
+
+  const system = [
+    `You are an expert social media copywriter adapting a caption for ${config.label}.`,
+    `Rewrite it to read native to ${config.label} and stay within ${config.charLimit} characters, preserving the core message and intent.`,
+    voice,
+    `Output ONLY the adapted caption — no platform label, numbering, quotes, or commentary.`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const prompt = [`Caption to adapt:`, input.sourceCaption].join("\n");
 
   return { system, prompt };
 }

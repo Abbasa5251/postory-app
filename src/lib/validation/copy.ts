@@ -24,3 +24,31 @@ export const generateCopySchema = z.object({
 });
 
 export type GenerateCopyInput = z.infer<typeof generateCopySchema>;
+
+/**
+ * AI cross-platform adaptation input (C3 — "write once → per-platform"). One
+ * master caption is adapted into a native version for each target platform. The
+ * action derives model/credits from credit_rates and charges 1 credit per
+ * target (a separate OpenRouter call each); the client never supplies pricing.
+ */
+export const adaptCopySchema = z.object({
+  brandId: z.uuid(),
+  // The target platforms to adapt the master caption to.
+  platforms: z
+    .array(postPlatformSchema)
+    // Dedupe: the composer sends its target chips; a hostile client could repeat one.
+    .transform((ps) => [...new Set(ps)])
+    .pipe(
+      z
+        .array(postPlatformSchema)
+        .min(1, "Select at least one platform to adapt for."),
+    ),
+  // The single caption the user wrote once, to be adapted per platform.
+  sourceCaption: z
+    .string()
+    .trim()
+    .min(1, "Write a caption first, then adapt it to each platform.")
+    .max(5000, "Keep the caption under 5000 characters."),
+});
+
+export type AdaptCopyInput = z.infer<typeof adaptCopySchema>;
