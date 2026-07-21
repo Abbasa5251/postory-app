@@ -54,7 +54,12 @@ export const createUploadUrl = withAction(
 
     const ext = EXT_BY_MIME[data.mimeType] ?? "bin";
     const r2Key = buildMediaKey(ctx.orgId, data.brandId, ext);
-    const url = await presignPut(r2Key);
+    const url = await presignPut({
+      key: r2Key,
+      kind: data.kind,
+      contentType: data.mimeType,
+      sizeBytes: data.sizeBytes,
+    });
     // r2Key echoes back to the client, which returns it to `recordUpload`; it's
     // org/brand-prefixed and re-validated there, so it's safe to hand out.
     return { r2Key, url };

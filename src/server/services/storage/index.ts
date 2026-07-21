@@ -1,4 +1,8 @@
 import "server-only";
+import {
+  acceptedMimesForKind,
+  maxUploadBytesForKind,
+} from "@/lib/platforms/config";
 import { getStorageClient } from "./client";
 import { StorageError } from "./errors";
 
@@ -43,13 +47,38 @@ export function buildMediaKey(
 }
 
 /**
- * Mint a presigned PUT URL for a key. Content-type/size are NOT bound in the
- * signature (keeps MinIO + R2 behaviour identical and avoids signed-header
- * fragility) — they are enforced authoritatively by `headObject` after upload.
+ * Mint a presigned PUT URL for a key. The declared content-type + size are
+ * validated against the config upload limits BEFORE a URL is minted, so the
+ * primitive never hands out a URL for an unsupported type or an over-limit size
+ * (defense-in-depth: the action validates the same input, and `headObject`
+ * re-checks the ACTUAL stored object after upload — the authoritative gate).
+ * The limits are NOT bound into the signature itself (keeps MinIO + R2
+ * behaviour identical and avoids signed-header fragility).
  */
-export async function presignPut(key: string): Promise<string> {
+export async function presignPut(input: {
+  key: string;
+  kind: "image" | "video";
+  contentType: string;
+  sizeBytes: number;
+}): Promise<string> {
+  if (!acceptedMimesForKind(input.kind).includes(input.contentType)) {
+    throw new StorageError(
+      `Unsupported ${input.kind} content type: ${input.contentType}`,
+    );
+  }
+  const maxBytes = maxUploadBytesForKind(input.kind);
+  if (
+    !Number.isSafeInteger(input.sizeBytes) ||
+    input.sizeBytes <= 0 ||
+    input.sizeBytes > maxBytes
+  ) {
+    throw new StorageError(
+      `Invalid upload size ${input.sizeBytes} (max ${maxBytes} bytes)`,
+    );
+  }
+
   const { aws, endpoint, bucket, region } = getStorageClient();
-  const url = new URL(`${endpoint}/${bucket}/${encodeKey(key)}`);
+  const url = new URL(`${endpoint}/${bucket}/${encodeKey(input.key)}`);
   url.searchParams.set("X-Amz-Expires", String(PRESIGN_EXPIRY_SECONDS));
   const signed = await aws.sign(url.toString(), {
     method: "PUT",
