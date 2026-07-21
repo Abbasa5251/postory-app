@@ -9,8 +9,10 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PLATFORM_LIST } from "@/lib/platforms/config";
 import { emptyPostContent } from "@/lib/validation/posts";
 import { listSocialAccounts } from "@/server/dal/accounts";
+import { listMediaForBrand } from "@/server/dal/media";
 import { getDraftById } from "@/server/dal/posts";
 import { NotFoundError } from "@/server/domain/errors";
+import { publicUrl } from "@/server/services/storage";
 import { requireBrand } from "../_lib/require-brand";
 
 // Thin route (§5): scoped DAL reads + render. params/searchParams are Promises
@@ -56,6 +58,25 @@ export default async function ComposerPage({
     connected: connectedPlatforms.has(p.id),
   }));
 
+  // This brand's uploaded media for the C4 library picker + edit-mode
+  // thumbnails. Map to serving views here (publicUrl is server-only). `kind` is
+  // a text column constrained to image|video — narrow it for the view. Bound the
+  // initial payload (most recent first); full search/pagination is D4.
+  const LIBRARY_PAGE_SIZE = 60;
+  const libraryAssets = (
+    await listMediaForBrand(ctx, brandId, LIBRARY_PAGE_SIZE)
+  ).map((asset) => ({
+    id: asset.id,
+    kind: asset.kind as "image" | "video",
+    url: publicUrl(asset.r2Key),
+    mimeType: asset.mimeType,
+    sizeBytes: asset.sizeBytes,
+    width: asset.width,
+    height: asset.height,
+    durationSeconds: asset.durationSeconds,
+    moderationStatus: asset.moderationStatus,
+  }));
+
   // Edit mode: hydrate an existing DRAFT. Cross-org / unassigned / nonexistent
   // all 404 (getDraftById); C1 only edits drafts, so a non-DRAFT post 404s too.
   let initial;
@@ -88,6 +109,7 @@ export default async function ComposerPage({
       // B2 stores null when the voice profile is all-empty, so a non-null value
       // means the brand has guidance the AI will apply (C2).
       hasVoiceProfile={Boolean(brand.voiceProfile)}
+      libraryAssets={libraryAssets}
     />
   );
 }

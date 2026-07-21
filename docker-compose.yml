@@ -1,11 +1,11 @@
-# Local dev database (perf: replaces ~220ms/query round-trips to Neon us-east-1
-# with ~1-3ms local queries). Postgres 18 is required — the schema uses native
-# uuidv7(). The neon-proxy fronts Postgres with Neon's HTTP protocol so the app's
-# neon-http driver (and db.batch) work locally exactly as against Neon cloud.
+# Local dev stack: Postgres (perf — replaces ~220ms/query round-trips to Neon
+# us-east-1 with ~1-3ms local queries; Postgres 18 required for native uuidv7())
+# + a neon-http proxy so the app's neon-http driver works unchanged, and a MinIO
+# object store standing in for Cloudflare R2 (C4 media).
 #
-#   npm run db:local:up      # start
+#   npm run stack:up         # start (services healthy) + create the media bucket
 #   npm run db:migrate       # apply migrations (uses .env.local DATABASE_URL)
-#   npm run db:local:down    # stop   (add -v via db:local:reset to wipe data)
+#   npm run stack:down       # stop   (add -v via stack:reset to wipe data)
 services:
   postgres:
     image: postgres:18-alpine
@@ -39,5 +39,57 @@ services:
       postgres:
         condition: service_healthy
 
+  # Local media object store (C4, ADR-007). S3-compatible stand-in for
+  # Cloudflare R2 so the storage service (aws4fetch) runs unchanged locally —
+  # the same parity trick as neon-proxy. Region "auto" matches R2's value so
+  # presigned signatures validate identically in dev and prod.
+  #   API:      http://localhost:9000  (R2_ENDPOINT / R2_PUBLIC_BASE_URL base)
+  #   Console:  http://localhost:9001  (login minioadmin / minioadmin)
+  minio:
+    image: minio/minio
+    container_name: postory-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_REGION_NAME: auto
+    # Loopback-only: never expose the store (fixed dev creds) on the network.
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - postory_minio:/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -f http://localhost:9000/minio/health/live || exit 1",
+        ]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+
+  # One-shot: create the media bucket + allow anonymous downloads so the dev
+  # public URL (R2_PUBLIC_BASE_URL) serves objects like R2's CDN. Behind the
+  # `init` profile so it is NOT part of the default `up --wait` set — a
+  # short-lived container that exits makes `--wait` return non-zero. `npm run
+  # stack:up` runs it as an explicit second step (`docker compose run --rm`)
+  # after the long-lived services are healthy. Idempotent (safe to re-run).
+  minio-init:
+    image: minio/mc
+    container_name: postory-minio-init
+    profiles: ["init"]
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        mc alias set local http://minio:9000 minioadmin minioadmin &&
+        mc mb --ignore-existing local/postory-media &&
+        mc anonymous set download local/postory-media
+
 volumes:
   postory_pgdata:
+  postory_minio:

@@ -82,6 +82,24 @@ Platform, each validated against that Platform's character limit. Editing one
 Platform's caption never changes another's.
 _Avoid_: copy (copy is the AI-generation act), body, text, description.
 
+**Media Asset**:
+An image or video belonging to a Brand (`media_assets`), stored in the object
+store (R2 in prod, MinIO in dev) under an `org/{orgId}/brand/{brandId}/…` key.
+Has a **kind** (image/video) and a **source** (upload now — C4; generated
+later — Epic D). Uploaded via a presigned direct-to-store PUT, then confirmed by
+a server HEAD (the authoritative mime/size gate). Attached to a Post **per
+Platform** (`content.variants[platform].mediaIds`); the flat union lands in
+`post_versions.media_ids`. Starts moderation `pending` (D5 gates it before
+publish).
+_Avoid_: attachment, file, upload (upload is the source, not the asset), image (a video is one too).
+
+**Media Spec**:
+A Platform's media rules (`platforms/config.ts`): accepted mime types + max size
+(the hard, server-enforced gate) and accepted aspect ratios + max video duration
+(advisory in the Composer, hard-gated at publish). Read via `getMediaSpec`;
+`assetFitsPlatform` computes the advisory warnings.
+_Avoid_: media rules, constraints, format (a format is one field of the spec).
+
 ### AI generation & credits
 
 **AI Copy**:

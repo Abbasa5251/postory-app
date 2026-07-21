@@ -24,6 +24,11 @@ export const postPlatformSchema = z.enum(PLATFORMS);
 /** One platform's caption variant. Empty is allowed — a draft may be incomplete. */
 const captionVariantSchema = z.object({
   caption: z.string(),
+  // Attached media asset ids for this platform (C4). Logical refs to
+  // media_assets.id — the DAL writes their de-duped union to
+  // post_versions.media_ids. Per-platform specs are advisory in the composer
+  // and hard-gated at publish (D-C4-3); here we validate structure only.
+  mediaIds: z.array(z.uuid()).optional(),
 });
 
 export const postContentSchema = z
@@ -58,6 +63,16 @@ export const postContentSchema = z
           code: "custom",
           message: `${PLATFORM_CONFIG[platform].label} caption must be at most ${limit.toLocaleString()} characters.`,
           path: ["variants", platform, "caption"],
+        });
+      }
+      // Per-platform media count ceiling (C4) — reuse the config cap, never
+      // hardcode. The composer guards this for UX; this is the real enforcement.
+      const maxAttachments = PLATFORM_CONFIG[platform].media.maxAttachments;
+      if ((variant.mediaIds?.length ?? 0) > maxAttachments) {
+        ctx.addIssue({
+          code: "custom",
+          message: `${PLATFORM_CONFIG[platform].label} allows at most ${maxAttachments} media item${maxAttachments === 1 ? "" : "s"}.`,
+          path: ["variants", platform, "mediaIds"],
         });
       }
     }

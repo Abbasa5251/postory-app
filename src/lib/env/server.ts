@@ -48,6 +48,21 @@ export const env = createEnv({
     // a signing key the /api/inngest serve endpoint returns 500.
     INNGEST_EVENT_KEY: z.string().min(1).optional(),
     INNGEST_SIGNING_KEY: z.string().min(1).optional(),
+    // Object storage for media (C4, ADR-007) — S3-compatible: MinIO in dev,
+    // Cloudflare R2 in prod. One code path, two backends; only the endpoint +
+    // public base URL differ. All optional so local/CI builds and mocked unit
+    // suites don't need them; the storage service throws at first use when
+    // unset (same lazy pattern as getRedis / ZERNIO_API_KEY). Required in
+    // production for uploads. `R2_ENDPOINT` wins; else derived from
+    // `R2_ACCOUNT_ID`. `R2_REGION` defaults to "auto" (R2's value; MinIO is
+    // configured to match).
+    R2_ENDPOINT: z.url().optional(),
+    R2_ACCOUNT_ID: z.string().min(1).optional(),
+    R2_ACCESS_KEY_ID: z.string().min(1).optional(),
+    R2_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+    R2_BUCKET: z.string().min(1).optional(),
+    R2_PUBLIC_BASE_URL: z.url().optional(),
+    R2_REGION: z.string().min(1).optional(),
   },
   experimental__runtimeEnv: process.env,
   emptyStringAsUndefined: true,

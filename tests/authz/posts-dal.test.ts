@@ -92,6 +92,23 @@ describe("createDraft — writes org_id from ctx and audits", () => {
       true,
     );
   });
+
+  it("404s (before any insert) when attached media isn't this brand's (C4)", async () => {
+    // getMediaByIds returns an asset scoped to the org but a DIFFERENT brand —
+    // validatedMediaIds must reject it so foreign refs never reach media_ids.
+    makeSelectChain(select, [{ id: "media_x", brandId: "brand_2" }]);
+    const inserts = captureInserts(insert, [{ id: "post_1" }]);
+    await expect(
+      createDraft(adminCtx, {
+        brandId: "brand_1",
+        content: {
+          targets: ["instagram" as const],
+          variants: { instagram: { caption: "x", mediaIds: ["media_x"] } },
+        },
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    expect(inserts).toHaveLength(0);
+  });
 });
 
 describe("updateDraft — appends an immutable version, DRAFT-only", () => {
