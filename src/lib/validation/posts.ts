@@ -101,7 +101,7 @@ export type SaveDraftInput = z.infer<typeof saveDraftSchema>;
  * own; it rides the caption in `postContentSchema`). Home here per §4.
  */
 export const utmFormSchema = z.object({
-  baseUrl: z.url("Enter a valid URL (including https://)."),
+  baseUrl: z.httpUrl("Enter a valid URL (including https://)."),
   source: z.string().trim().min(1, "Source is required."),
   medium: z.string().trim().min(1, "Medium is required."),
   campaign: z.string().trim().min(1, "Campaign is required."),

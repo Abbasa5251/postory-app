@@ -143,6 +143,16 @@ describe("utmFormSchema", () => {
     expect(result.success).toBe(false);
   });
 
+  it("rejects a non-http(s) URL scheme", () => {
+    const result = utmFormSchema.safeParse({
+      baseUrl: "javascript:alert(1)",
+      source: "ig",
+      medium: "social",
+      campaign: "launch",
+    });
+    expect(result.success).toBe(false);
+  });
+
   it("rejects a missing required param", () => {
     const result = utmFormSchema.safeParse({
       baseUrl: "https://example.com",
