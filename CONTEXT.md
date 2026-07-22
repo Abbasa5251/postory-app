@@ -100,6 +100,15 @@ A Platform's media rules (`platforms/config.ts`): accepted mime types + max size
 `assetFitsPlatform` computes the advisory warnings.
 _Avoid_: media rules, constraints, format (a format is one field of the spec).
 
+**Preview Card**:
+The Composer's feed-accurate rendering (C5) of the active Platform's Caption +
+Media in that Platform's native chrome — a stacked feed card (Instagram /
+Facebook / LinkedIn / Threads) or a full-bleed 9:16 frame (TikTok / YouTube
+Shorts). It follows the active caption tab and is purely presentational (no
+publishing, no persistence). Layout comes from `getPreviewChrome`; identity is
+the Platform's connected-account handle/avatar, falling back to the Brand.
+_Avoid_: mockup, thumbnail, live preview (nothing is live — it's illustrative).
+
 ### AI generation & credits
 
 **AI Copy**:
