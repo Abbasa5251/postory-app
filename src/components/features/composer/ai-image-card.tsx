@@ -25,9 +25,13 @@ type Job = Extract<
   { ok: true }
 >["data"];
 
+// Labels only — the authoritative per-image credit cost lives in `credit_rates`
+// (server-side, read via getActiveRate); the client must not hardcode it or it
+// would drift when the rate is tuned (§4). The action fast-fails on insufficient
+// balance and surfaces INSUFFICIENT_CREDITS here.
 const TIERS = [
-  { id: "standard", label: "Standard", credits: 3 },
-  { id: "premium", label: "Premium", credits: 12 },
+  { id: "standard", label: "Standard" },
+  { id: "premium", label: "Premium" },
 ] as const;
 type Tier = (typeof TIERS)[number]["id"];
 
@@ -55,30 +59,34 @@ export function AiImageCard({
   const [tier, setTier] = useState<Tier>("standard");
   const [aspectRatio, setAspectRatio] = useState<ImageAspectPreset>("1:1");
   const [variantCount, setVariantCount] = useState<number>(2);
-  // The job plus the platform it was generated FOR, so attaching a variant
-  // targets that platform even if the active tab changed since.
+  // The job plus the platform + variant count it was generated FOR, so
+  // attaching/rendering stays tied to the submitted request even if the active
+  // tab or the count selector changed since.
   const [session, setSession] = useState<{
     job: Job;
     platform: Platform;
+    count: number;
   } | null>(null);
   const genPlatform = useRef<Platform | null>(null);
+  const genCount = useRef<number>(variantCount);
 
   const { pending, message, fieldErrors, run } = useActionForm(generateImage, {
     onSuccess: (data: Job) => {
       const target = genPlatform.current;
-      if (target) setSession({ job: data, platform: target });
+      if (target)
+        setSession({ job: data, platform: target, count: genCount.current });
     },
   });
 
   function generate() {
     if (!platform) return;
     genPlatform.current = platform;
+    genCount.current = variantCount;
     // Remount the stream (new key) so each run starts from a clean slate.
     setSession(null);
     void run({ brandId, prompt, tier, aspectRatio, variantCount, platform });
   }
 
-  const cost = TIERS.find((t) => t.id === tier)!.credits * variantCount;
   const canGenerate = Boolean(platform) && prompt.trim().length > 0 && !pending;
   // Which presets this platform prefers (advisory highlight) — TikTok/YouTube
   // (video-only) return none, so we fall back to showing all four unmarked.
@@ -137,7 +145,7 @@ export function AiImageCard({
                       : "border-border hover:text-foreground",
                   )}
                 >
-                  {t.label} · {t.credits}
+                  {t.label}
                 </button>
               ))}
             </div>
@@ -226,18 +234,18 @@ export function AiImageCard({
               <ImageStream
                 key={session.job.jobId}
                 job={session.job}
-                count={variantCount}
+                count={session.count}
                 onUse={(asset) => onAttach(asset, [session.platform])}
               />
             )}
 
             <p className="text-xs text-muted-foreground">
-              Generates {variantCount} image
+              Generates {variantCount} {tier} image
               {variantCount === 1 ? "" : "s"} for{" "}
               {PLATFORM_CONFIG[platform].label} from your prompt and brand
-              style. Uses {cost} credit{cost === 1 ? "" : "s"} ({tier}, one per
-              image); only successful images are charged. Edit the prompt and
-              generate again to regenerate.
+              style. Credits are charged per image (premium costs more than
+              standard) and only successful images are charged. Edit the prompt
+              and generate again to regenerate.
             </p>
           </>
         )}

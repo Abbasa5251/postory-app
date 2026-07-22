@@ -1,6 +1,7 @@
 import "server-only";
 import { eventType } from "inngest";
 import * as z from "zod";
+import { IMAGE_ASPECT_PRESET_IDS } from "@/lib/platforms/config";
 import { postPlatformSchema } from "@/lib/validation/posts";
 
 /**
@@ -101,7 +102,9 @@ export const imageRequestedEvent = eventType("generation/image.requested", {
     // The user's raw image description; the job assembles the final prompt from
     // it + brand style (domain/image-prompt), mirroring copy/adapt.
     prompt: z.string(),
-    aspectRatio: z.string(),
+    // One of the D1 presets (transform-free enum, Inngest-safe) so the type
+    // flows to generateImages without a cast; the action validates the same set.
+    aspectRatio: z.enum(IMAGE_ASPECT_PRESET_IDS),
     variantCount: z.number().int(),
     // Brand voice (B2) — only `tone` shapes the image; a transform-free mirror.
     voiceProfile: voiceProfileEventSchema,

@@ -12,9 +12,9 @@ Verified against the installed packages:
 - `ai@7.0.31`
   - `streamText({ model, system, prompt, temperature, maxOutputTokens, abortSignal })`
     → `{ textStream: AsyncIterable<string>, text: Promise<string> }`.
-  - `generateImage({ model, prompt, aspectRatio: \`${w}:${h}\`, n, abortSignal })`
-    → `{ images: GeneratedFile[] }`, each `GeneratedFile` = `{ base64, uint8Array, mediaType }`.
-    (Exported directly in v7 — not `experimental_`.)
+  - `generateImage({ model, prompt, aspectRatio, n, abortSignal })` — `aspectRatio`
+    is a `"{w}:{h}"` string → `{ images: GeneratedFile[] }`, each `GeneratedFile`
+    = `{ base64, uint8Array, mediaType }`. (Exported directly in v7 — not `experimental_`.)
 - `@openrouter/ai-sdk-provider@3.0.0` — `createOpenRouter({ apiKey, appName, appUrl })`
   → provider; `provider.chat(modelId)` is the language model, `provider.imageModel(modelId)`
   is the image model. `apiKey` from `env.OPENROUTER_API_KEY` (lazy — unset only

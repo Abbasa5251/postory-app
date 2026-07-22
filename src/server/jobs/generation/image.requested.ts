@@ -127,11 +127,11 @@ export const generateImageJob = inngest.createFunction(
             const [image] = await generateImages({
               modelId: d.modelId,
               prompt,
-              // The enum-validated preset id is always `${w}:${h}` (D1).
-              aspectRatio: d.aspectRatio as `${number}:${number}`,
+              aspectRatio: d.aspectRatio,
               n: 1,
             });
-            if (!image) return { ok: false as const };
+            if (!image)
+              return { ok: false as const, error: "no image returned" };
 
             const key = buildMediaKey(
               ctx.orgId,
@@ -162,8 +162,13 @@ export const generateImageJob = inngest.createFunction(
               durationSeconds: recorded.durationSeconds,
               moderationStatus: recorded.moderationStatus,
             };
-          } catch {
-            return { ok: false as const };
+          } catch (err) {
+            // Preserve the underlying reason (OpenRouter / storage / DAL) so the
+            // job's error column reports why a variant failed, not just a count.
+            return {
+              ok: false as const,
+              error: err instanceof Error ? err.message : String(err),
+            };
           }
           // The asset is captured in this step's DURABLE result (returned below)
           // and re-broadcast in `done.assets`, so realtime is only the fast path.
@@ -180,7 +185,8 @@ export const generateImageJob = inngest.createFunction(
     );
 
     const produced = results.flatMap((r) => (r.ok ? [r.asset] : []));
-    const failed = results.length - produced.length;
+    const failureReasons = results.flatMap((r) => (r.ok ? [] : [r.error]));
+    const failed = failureReasons.length;
 
     // Charge only the variants that succeeded; refund the rest.
     await step.run("settle", async () => {
@@ -193,7 +199,7 @@ export const generateImageJob = inngest.createFunction(
         creditsSettled: used,
         error:
           failed > 0
-            ? `image generation failed for ${failed} variant(s)`
+            ? `image generation failed for ${failed} variant(s): ${[...new Set(failureReasons)].join("; ")}`
             : undefined,
       });
     });

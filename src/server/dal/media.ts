@@ -4,6 +4,7 @@ import { db } from "@/db/db";
 import { mediaAssets } from "@/db/schemas/media";
 import { NotFoundError } from "@/server/domain/errors";
 import { recordAuditEvent } from "./audit";
+import { getById as getGenerationJobById } from "./generation-jobs";
 import { assertBrandAccess, brandScope, orgScope } from "./scope";
 import type { AuthCtx } from "./types";
 
@@ -158,6 +159,14 @@ export async function recordGeneratedAsset(
   },
 ): Promise<MediaAsset> {
   assertBrandAccess(ctx, input.brandId);
+  // Validate the generation job is org-scoped + brand-accessible before linking
+  // it (the FK is single-column, so it wouldn't catch a cross-org job id). This
+  // 404s a missing/cross-org/unassigned job and rejects a job/brand mismatch, so
+  // a bad link can never be written — the DAL owns its own scoping (§6).
+  const job = await getGenerationJobById(ctx, input.generationJobId);
+  if (job.brandId !== input.brandId) {
+    throw new NotFoundError("generation_job", input.generationJobId);
+  }
   return insertMediaAsset(ctx, {
     brandId: input.brandId,
     kind: "image",

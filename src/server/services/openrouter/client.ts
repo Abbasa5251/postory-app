@@ -2,6 +2,10 @@ import "server-only";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { generateImage, streamText } from "ai";
 import { env } from "@/lib/env/server";
+import {
+  acceptedMimesForKind,
+  maxUploadBytesForKind,
+} from "@/lib/platforms/config";
 import { OpenRouterError } from "./errors";
 
 /**
@@ -96,8 +100,16 @@ export type GeneratedImage = {
  * passes `n: 1` — this keeps per-image failures isolated and refundable
  * (failed generations are unbilled, ADR-012 → refund the reservation).
  *
- * Errors (auth / rate-limit / upstream / content filter) throw; the job's
- * refund path handles them.
+ * `maxRetries: 0` — image generation is billed and NOT deduplicated by
+ * OpenRouter, so a silent SDK retry after a lost-but-succeeded response would
+ * double-generate/double-bill. A transient failure instead surfaces to the job,
+ * which fails that one variant and refunds it (partial success). Job-level
+ * retry-safety is separately guaranteed by the memoized per-variant step.
+ *
+ * Each returned image is validated against the same media allowlist + size cap
+ * as an upload (`platforms/config`), so unvalidated provider output never
+ * reaches R2. Errors (auth / rate-limit / upstream / content filter / an
+ * unsupported or oversized image) throw; the job's refund path handles them.
  */
 export async function generateImages(
   input: GenerateImagesInput,
@@ -107,10 +119,23 @@ export async function generateImages(
     prompt: input.prompt,
     aspectRatio: input.aspectRatio,
     n: input.n,
+    maxRetries: 0,
     abortSignal: input.signal,
   });
-  return result.images.map((image) => ({
-    bytes: image.uint8Array,
-    mediaType: image.mediaType,
-  }));
+
+  const allowedMimes = acceptedMimesForKind("image");
+  const maxBytes = maxUploadBytesForKind("image");
+  return result.images.map((image) => {
+    if (!allowedMimes.includes(image.mediaType)) {
+      throw new OpenRouterError(
+        `Generated image has an unsupported media type: ${image.mediaType}`,
+      );
+    }
+    if (image.uint8Array.byteLength > maxBytes) {
+      throw new OpenRouterError(
+        `Generated image exceeds the ${maxBytes}-byte limit`,
+      );
+    }
+    return { bytes: image.uint8Array, mediaType: image.mediaType };
+  });
 }

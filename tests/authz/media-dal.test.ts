@@ -96,7 +96,22 @@ describe("recordGeneratedAsset — writes org_id from ctx + generation provenanc
     mimeType: "image/png",
   };
 
+  // The generation job the asset links to — the scoped lookup returns this
+  // (org-scoped select) before the insert.
+  const JOB_ROW = {
+    id: "job_1",
+    brandId: "brand_1",
+    type: "image",
+    modelId: "bytedance-seed/seedream-4.5",
+    status: "running",
+    creditsReserved: 6,
+    creditsSettled: null,
+    providerGenerationId: null,
+    error: null,
+  };
+
   it("inserts a generated asset with org_id from ctx, source 'generated', model + job id, audits media.create", async () => {
+    makeSelectChain(select, [JOB_ROW]); // scoped generation-job lookup
     const inserts = captureInserts(insert, [GENERATED_ROW]);
     const result = await recordGeneratedAsset(adminCtx, {
       brandId: "brand_1",
@@ -128,6 +143,38 @@ describe("recordGeneratedAsset — writes org_id from ctx + generation provenanc
       recordGeneratedAsset(creatorCtx, {
         brandId: "brand_2",
         r2Key: "org/org_1/brand/brand_2/gen.png",
+        mimeType: "image/png",
+        sizeBytes: 2048,
+        sourceModel: "m",
+        generationJobId: "job_1",
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    expect(inserts).toHaveLength(0);
+  });
+
+  it("404s (before any insert) when the linked job is missing / cross-org", async () => {
+    makeSelectChain(select, []); // scoped job lookup finds nothing
+    const inserts = captureInserts(insert, [GENERATED_ROW]);
+    await expect(
+      recordGeneratedAsset(adminCtx, {
+        brandId: "brand_1",
+        r2Key: "org/org_1/brand/brand_1/gen.png",
+        mimeType: "image/png",
+        sizeBytes: 2048,
+        sourceModel: "m",
+        generationJobId: "job_x",
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    expect(inserts).toHaveLength(0);
+  });
+
+  it("404s (before any insert) when the job belongs to a different brand", async () => {
+    makeSelectChain(select, [{ ...JOB_ROW, brandId: "brand_2" }]);
+    const inserts = captureInserts(insert, [GENERATED_ROW]);
+    await expect(
+      recordGeneratedAsset(adminCtx, {
+        brandId: "brand_1",
+        r2Key: "org/org_1/brand/brand_1/gen.png",
         mimeType: "image/png",
         sizeBytes: 2048,
         sourceModel: "m",
