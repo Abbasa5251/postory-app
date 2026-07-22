@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/features/shell/page-header";
 import { Button } from "@/components/ui/button";
@@ -11,10 +11,12 @@ import { useActionForm } from "@/hooks/use-action-form";
 import { PLATFORM_CONFIG, type Platform } from "@/lib/platforms/config";
 import { resolveMediaAssets } from "@/lib/platforms/preview";
 import type { PostContent } from "@/lib/validation/posts";
+import { insertText } from "@/lib/caption-helpers";
 import { cn } from "@/lib/utils";
 import { saveDraft } from "@/server/actions/posts";
 import { AdaptCard } from "./adapt-card";
 import { AiCopyCard } from "./ai-copy-card";
+import { CaptionToolbar } from "./caption-toolbar";
 import { DisabledCard } from "./disabled-card";
 import { MediaCard } from "./media-card";
 import type { MediaAssetView } from "./media-types";
@@ -125,6 +127,35 @@ export function Composer({
   function setCaption(platform: Platform, value: string) {
     setCaptions((prev) => ({ ...prev, [platform]: value }));
   }
+
+  // C6 caption-toolbar insertion. The textarea is controlled, so we compute the
+  // next value + caret purely (`insertText`), then restore the caret in a layout
+  // effect once React commits the new value — a raw DOM write would be clobbered
+  // by the re-render.
+  const captionRef = useRef<HTMLTextAreaElement>(null);
+  const pendingCaretRef = useRef<number | null>(null);
+
+  function insertAtCursor(text: string) {
+    if (!active) return;
+    const el = captionRef.current;
+    const current = captions[active] ?? "";
+    // Fall back to appending when the textarea isn't focused/available.
+    const start = el?.selectionStart ?? current.length;
+    const end = el?.selectionEnd ?? current.length;
+    const next = insertText(current, start, end, text);
+    pendingCaretRef.current = next.caret;
+    setCaption(active, next.value);
+  }
+
+  useEffect(() => {
+    const caret = pendingCaretRef.current;
+    if (caret === null) return;
+    pendingCaretRef.current = null;
+    const el = captionRef.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(caret, caret);
+  });
 
   /** Attach an asset to the given platforms (C4), ensuring each is targeted. */
   function attachMedia(asset: MediaAssetView, platformsToAttach: Platform[]) {
@@ -322,12 +353,17 @@ export function Composer({
                     </TabsList>
                   </Tabs>
                   <Textarea
+                    ref={captionRef}
                     rows={6}
                     value={captions[active] ?? ""}
                     onChange={(e) => setCaption(active, e.target.value)}
                     aria-invalid={activeOver}
                     aria-label={`Caption for ${activePlatformLabel}`}
                     placeholder={`Write the ${activePlatformLabel} caption…`}
+                  />
+                  <CaptionToolbar
+                    caption={captions[active] ?? ""}
+                    onInsert={insertAtCursor}
                   />
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">

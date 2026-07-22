@@ -94,6 +94,23 @@ export const saveDraftSchema = z.object({
 
 export type SaveDraftInput = z.infer<typeof saveDraftSchema>;
 
+/**
+ * UTM tracked-link builder input (C6). Client-only — the composer's link
+ * helper parses the form through this, then `buildUtmUrl` composes the URL
+ * that gets inserted into the caption as plain text (no persistence of its
+ * own; it rides the caption in `postContentSchema`). Home here per §4.
+ */
+export const utmFormSchema = z.object({
+  baseUrl: z.url("Enter a valid URL (including https://)."),
+  source: z.string().trim().min(1, "Source is required."),
+  medium: z.string().trim().min(1, "Medium is required."),
+  campaign: z.string().trim().min(1, "Campaign is required."),
+  term: z.string().trim().optional(),
+  content: z.string().trim().optional(),
+});
+
+export type UtmFormInput = z.infer<typeof utmFormSchema>;
+
 /** Convenience: the empty content a fresh composer starts from. */
 export function emptyPostContent(): PostContent {
   return { targets: [], variants: {} };
