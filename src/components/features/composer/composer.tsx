@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { saveDraft } from "@/server/actions/posts";
 import { AdaptCard } from "./adapt-card";
 import { AiCopyCard } from "./ai-copy-card";
+import { AiImageCard } from "./ai-image-card";
 import { CaptionToolbar } from "./caption-toolbar";
 import { DisabledCard } from "./disabled-card";
 import { MediaCard } from "./media-card";
@@ -408,6 +409,15 @@ export function Composer({
             library={library}
             onAttach={attachMedia}
             onRemove={removeMedia}
+          />
+          {/* Generate an image with AI (D3) — a produced variant flows through
+              the same `attachMedia` seam as an upload/library pick. */}
+          <AiImageCard
+            brandId={brandId}
+            platform={active}
+            hasVoiceProfile={hasVoiceProfile}
+            seedCaption={active ? (captions[active] ?? "") : ""}
+            onAttach={attachMedia}
           />
           <DisabledCard title="Schedule" soon="F1">
             {`Pick a date and time to publish — ${timezone} (workspace timezone). Scheduling lands with F1.`}

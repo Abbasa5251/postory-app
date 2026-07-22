@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMediaKey } from "@/server/services/storage";
+import { buildMediaKey, extForMediaType } from "@/server/services/storage";
 
 /**
  * The ADR-007 R2/MinIO key layout (C4) — the single place media keys are built.
@@ -23,5 +23,22 @@ describe("buildMediaKey", () => {
     expect(buildMediaKey("o", "b", "png")).not.toBe(
       buildMediaKey("o", "b", "png"),
     );
+  });
+});
+
+/**
+ * Media-type → extension mapping for the D2 server-side PUT key (generated
+ * images arrive as bytes + a media type from OpenRouter).
+ */
+describe("extForMediaType", () => {
+  it("maps the supported image media types", () => {
+    expect(extForMediaType("image/png")).toBe("png");
+    expect(extForMediaType("image/jpeg")).toBe("jpg");
+    expect(extForMediaType("image/webp")).toBe("webp");
+  });
+
+  it("falls back to 'bin' for an unknown media type", () => {
+    expect(extForMediaType("image/gif")).toBe("bin");
+    expect(extForMediaType("")).toBe("bin");
   });
 });

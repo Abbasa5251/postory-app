@@ -79,3 +79,33 @@ export const copyAdaptRequestedEvent = eventType(
     }),
   },
 );
+
+/**
+ * AI image generation requested (D2). Emitted by the generateImage action after
+ * it has validated input, authorized, and created the queued generation_jobs
+ * row; the worker reserves N credits (one per variant), generates each variant
+ * via OpenRouter's Image API, stores it in R2, and settles / refunds failed
+ * variants. Fields are already-trusted (server-derived): orgId/creditsPerImage/
+ * modelId come from the ctx + credit_rates, not client input. The prompt is the
+ * assembled final prompt (domain/image-prompt). `platform` is optional context
+ * for provenance only — the asset is brand-scoped, not platform-bound.
+ */
+export const imageRequestedEvent = eventType("generation/image.requested", {
+  schema: z.object({
+    orgId: z.string(),
+    jobId: z.string(),
+    brandId: z.string(),
+    // Cost of ONE image; total reserved = this × variantCount.
+    creditsPerImage: z.number().int(),
+    modelId: z.string(),
+    // The user's raw image description; the job assembles the final prompt from
+    // it + brand style (domain/image-prompt), mirroring copy/adapt.
+    prompt: z.string(),
+    aspectRatio: z.string(),
+    variantCount: z.number().int(),
+    // Brand voice (B2) — only `tone` shapes the image; a transform-free mirror.
+    voiceProfile: voiceProfileEventSchema,
+    // Optional provenance context — the asset is brand-scoped, not platform-bound.
+    platform: postPlatformSchema.optional(),
+  }),
+});

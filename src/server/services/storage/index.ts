@@ -25,6 +25,22 @@ const PRESIGN_EXPIRY_SECONDS = 600;
  * Zernio client's 15s timeout). */
 const HEAD_TIMEOUT_MS = 15_000;
 
+/** PUT deadline — a server-side upload (D2 generated images) must fail loudly,
+ * not hang the Inngest step. Larger than HEAD (bytes travel). */
+const PUT_TIMEOUT_MS = 60_000;
+
+/** Map an image media type to a file extension for the R2 key. */
+const IMAGE_EXT_BY_MIME: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+};
+
+/** File extension for a media type (D2 key layout). Falls back to `bin`. */
+export function extForMediaType(mediaType: string): string {
+  return IMAGE_EXT_BY_MIME[mediaType] ?? "bin";
+}
+
 /** Percent-encode each path segment while preserving the `/` separators. */
 function encodeKey(key: string): string {
   return key.split("/").map(encodeURIComponent).join("/");
@@ -134,6 +150,52 @@ export async function headObject(
     );
   }
   return { contentType: res.headers.get("content-type"), sizeBytes };
+}
+
+/**
+ * PUT bytes to a key from the server (D2 — AI image generation). Unlike C4's
+ * presigned direct-from-client upload, generated images arrive as base64 in the
+ * Inngest job, so the server writes them itself. The key is always minted
+ * server-side (`buildMediaKey`); the job HEAD-confirms the object afterwards for
+ * the authoritative size (same as C4's record path). Bounded by a deadline so a
+ * hung store fails the step rather than hanging it.
+ */
+export async function putObject(
+  key: string,
+  bytes: Uint8Array,
+  contentType: string,
+): Promise<void> {
+  const { aws, endpoint, bucket, region } = getStorageClient();
+  const url = `${endpoint}/${bucket}/${encodeKey(key)}`;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PUT_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await aws.fetch(url, {
+      method: "PUT",
+      // Copy into a fresh ArrayBuffer-backed view: the AI SDK returns
+      // `Uint8Array<ArrayBufferLike>`, which doesn't satisfy `BodyInit` (its
+      // buffer could be a SharedArrayBuffer). One small copy in a background job.
+      body: new Uint8Array(bytes),
+      headers: { "content-type": contentType },
+      signal: controller.signal,
+      aws: { service: "s3", region },
+    });
+  } catch (error) {
+    throw new StorageError(
+      controller.signal.aborted
+        ? `PUT ${key} timed out after ${PUT_TIMEOUT_MS}ms`
+        : `PUT ${key} request failed`,
+      { cause: error },
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (!res.ok) {
+    throw new StorageError(`PUT ${key} failed with status ${res.status}`);
+  }
 }
 
 /** Public (CDN in prod, MinIO in dev) URL for serving a stored object. */

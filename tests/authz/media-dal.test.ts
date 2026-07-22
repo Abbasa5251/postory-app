@@ -3,6 +3,7 @@ import {
   getMediaById,
   getMediaByIds,
   listMediaForBrand,
+  recordGeneratedAsset,
   recordUpload,
 } from "@/server/dal/media";
 import { NotFoundError } from "@/server/domain/errors";
@@ -80,6 +81,57 @@ describe("recordUpload — writes org_id from ctx, audits, brand-access gated", 
         r2Key: "org/org_1/brand/brand_2/x.jpg",
         mimeType: "image/jpeg",
         sizeBytes: 1024,
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    expect(inserts).toHaveLength(0);
+  });
+});
+
+describe("recordGeneratedAsset — writes org_id from ctx + generation provenance, audits, brand-access gated", () => {
+  const GENERATED_ROW = {
+    ...ASSET_ROW,
+    id: "media_gen_1",
+    source: "generated",
+    r2Key: "org/org_1/brand/brand_1/gen.png",
+    mimeType: "image/png",
+  };
+
+  it("inserts a generated asset with org_id from ctx, source 'generated', model + job id, audits media.create", async () => {
+    const inserts = captureInserts(insert, [GENERATED_ROW]);
+    const result = await recordGeneratedAsset(adminCtx, {
+      brandId: "brand_1",
+      r2Key: "org/org_1/brand/brand_1/gen.png",
+      mimeType: "image/png",
+      sizeBytes: 2048,
+      sourceModel: "bytedance-seed/seedream-4.5",
+      generationJobId: "job_1",
+    });
+    expect(result.id).toBe("media_gen_1");
+
+    const assetInsert = inserts.find((c) => "r2Key" in type(c.values));
+    expect(type(assetInsert!.values).orgId).toBe("org_1");
+    expect(type(assetInsert!.values).source).toBe("generated");
+    expect(type(assetInsert!.values).kind).toBe("image");
+    expect(type(assetInsert!.values).sourceModel).toBe(
+      "bytedance-seed/seedream-4.5",
+    );
+    expect(type(assetInsert!.values).generationJobId).toBe("job_1");
+    expect(inserts.some((c) => type(c.values).action === "media.create")).toBe(
+      true,
+    );
+  });
+
+  it("404s (before any insert) when a creator targets an unassigned brand", async () => {
+    const creatorCtx = memberCtx(); // creator, brandIds ["brand_1"]
+    const inserts = captureInserts(insert, [GENERATED_ROW]);
+    await expect(
+      recordGeneratedAsset(creatorCtx, {
+        brandId: "brand_2",
+        r2Key: "org/org_1/brand/brand_2/gen.png",
+        mimeType: "image/png",
+        sizeBytes: 2048,
+        sourceModel: "m",
+        generationJobId: "job_1",
       }),
     ).rejects.toBeInstanceOf(NotFoundError);
     expect(inserts).toHaveLength(0);
