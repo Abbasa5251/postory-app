@@ -13,7 +13,7 @@ import {
   ThumbsDown,
   ThumbsUp,
 } from "lucide-react";
-import type { ComponentType } from "react";
+import { type ComponentType, useRef, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { PLATFORM_CONFIG, type Platform } from "@/lib/platforms/config";
 import {
@@ -91,6 +91,53 @@ function fallbackHandle(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "") || "brand";
 }
 
+/** One media item (image or video) filling its slide, mirroring the C4 convention. */
+function MediaSlide({ asset }: { asset: MediaAssetView }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  // Once the user starts a video, reveal native controls (play/pause/scrub/mute)
+  // and drop the click-to-play overlay.
+  const [started, setStarted] = useState(false);
+
+  if (asset.kind === "video") {
+    return (
+      <>
+        <video
+          ref={videoRef}
+          src={asset.url}
+          poster={asset.posterUrl ?? undefined}
+          className="size-full object-cover"
+          controls={started}
+          preload="metadata"
+          playsInline
+          onPlay={() => setStarted(true)}
+        />
+        {!started && (
+          <button
+            type="button"
+            aria-label="Play video"
+            onClick={() => void videoRef.current?.play()}
+            className="absolute inset-0 flex items-center justify-center"
+          >
+            <span className="flex size-11 items-center justify-center rounded-full bg-black/45 text-white transition-transform hover:scale-105">
+              <Play className="size-5 fill-current" />
+            </span>
+          </button>
+        )}
+      </>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={asset.url} alt="" className="size-full object-cover" />
+  );
+}
+
+/**
+ * The media frame: a horizontal, swipeable carousel showing EVERY attached asset
+ * (like a real feed carousel), with a count badge + dot indicators when there's
+ * more than one. Scroll-snap per slide; the active dot tracks scroll position.
+ * Empty → an aspect-correct placeholder.
+ */
 function PreviewMedia({
   assets,
   aspect,
@@ -100,8 +147,9 @@ function PreviewMedia({
   aspect: string;
   dark?: boolean;
 }) {
-  const hero = assets[0];
-  if (!hero) {
+  const [active, setActive] = useState(0);
+
+  if (assets.length === 0) {
     return (
       <div
         style={{ aspectRatio: aspect }}
@@ -117,35 +165,53 @@ function PreviewMedia({
       </div>
     );
   }
+
+  const multi = assets.length > 1;
   return (
     <div
       style={{ aspectRatio: aspect }}
       className="relative w-full overflow-hidden bg-muted"
     >
-      {hero.kind === "video" ? (
+      <div
+        // Horizontal scroll-snap track; scrollbar hidden (swipe/drag to move).
+        className="flex size-full snap-x snap-mandatory [scrollbar-width:none] overflow-x-auto scroll-smooth [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+        onScroll={
+          multi
+            ? (e) => {
+                const el = e.currentTarget;
+                const i = Math.round(el.scrollLeft / el.clientWidth);
+                setActive(Math.min(Math.max(i, 0), assets.length - 1));
+              }
+            : undefined
+        }
+      >
+        {assets.map((asset, i) => (
+          <div
+            key={asset.id || i}
+            className="relative size-full shrink-0 snap-center"
+          >
+            <MediaSlide asset={asset} />
+          </div>
+        ))}
+      </div>
+
+      {multi && (
         <>
-          <video
-            src={hero.url}
-            poster={hero.posterUrl ?? undefined}
-            className="size-full object-cover"
-            muted
-            preload="metadata"
-            playsInline
-          />
-          <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <span className="flex size-11 items-center justify-center rounded-full bg-black/45 text-white">
-              <Play className="size-5 fill-current" />
-            </span>
+          <span className="absolute top-2 right-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white tabular-nums">
+            {active + 1}/{assets.length}
           </span>
+          <div className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center gap-1.5">
+            {assets.map((asset, i) => (
+              <span
+                key={asset.id || i}
+                className={cn(
+                  "size-1.5 rounded-full bg-white drop-shadow transition-opacity",
+                  i === active ? "opacity-100" : "opacity-40",
+                )}
+              />
+            ))}
+          </div>
         </>
-      ) : (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={hero.url} alt="" className="size-full object-cover" />
-      )}
-      {assets.length > 1 && (
-        <span className="absolute top-2 right-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white">
-          +{assets.length - 1}
-        </span>
       )}
     </div>
   );
@@ -361,10 +427,14 @@ export function PostPreview({
   identity,
 }: PostPreviewProps) {
   const label = platform ? PLATFORM_CONFIG[platform].label : null;
-  // A video on Instagram/Facebook is a Reel (9:16), not a feed card — the layout
-  // follows the media, not just the platform.
-  const hasVideo = assets.some((a) => a.kind === "video");
-  const layout = platform ? resolvePreviewLayout(platform, hasVideo) : null;
+  // Layout follows the media, not just the platform. A *single* video on
+  // Instagram/Facebook is a Reel (9:16); two+ items — including a mixed
+  // image+video set — is a carousel (feed card). Key off the hero (assets[0],
+  // the slide PreviewMedia leads with) plus the count.
+  const isVideoHero = assets[0]?.kind === "video";
+  const layout = platform
+    ? resolvePreviewLayout(platform, isVideoHero, assets.length)
+    : null;
   const formatLabel =
     platform && layout ? previewFormatLabel(platform, layout) : null;
   return (

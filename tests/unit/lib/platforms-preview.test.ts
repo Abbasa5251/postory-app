@@ -39,24 +39,31 @@ describe("preview chrome", () => {
 
 describe("resolvePreviewLayout (media-aware)", () => {
   it("keeps Instagram/Facebook as a feed card for images/text", () => {
-    expect(resolvePreviewLayout("instagram", false)).toBe("feed");
-    expect(resolvePreviewLayout("facebook", false)).toBe("feed");
+    expect(resolvePreviewLayout("instagram", false, 0)).toBe("feed");
+    expect(resolvePreviewLayout("instagram", false, 1)).toBe("feed");
+    expect(resolvePreviewLayout("facebook", false, 1)).toBe("feed");
   });
 
-  it("switches Instagram/Facebook to vertical (Reel) when the media is a video", () => {
-    expect(resolvePreviewLayout("instagram", true)).toBe("vertical");
-    expect(resolvePreviewLayout("facebook", true)).toBe("vertical");
+  it("switches Instagram/Facebook to a Reel only for a SINGLE video", () => {
+    expect(resolvePreviewLayout("instagram", true, 1)).toBe("vertical");
+    expect(resolvePreviewLayout("facebook", true, 1)).toBe("vertical");
   });
 
-  it("keeps LinkedIn/Threads as a feed card even with a video (inline, no Reel)", () => {
-    expect(resolvePreviewLayout("linkedin", true)).toBe("feed");
-    expect(resolvePreviewLayout("threads", true)).toBe("feed");
+  it("keeps a multi-item post a feed carousel even when it leads with a video (mixed)", () => {
+    // A video hero with >1 item is a carousel (image+video mix), not a Reel.
+    expect(resolvePreviewLayout("instagram", true, 3)).toBe("feed");
+    expect(resolvePreviewLayout("facebook", true, 2)).toBe("feed");
+  });
+
+  it("keeps LinkedIn/Threads as a feed card even with a single video (inline, no Reel)", () => {
+    expect(resolvePreviewLayout("linkedin", true, 1)).toBe("feed");
+    expect(resolvePreviewLayout("threads", true, 1)).toBe("feed");
   });
 
   it("keeps TikTok/YouTube vertical regardless of media", () => {
     for (const p of ["tiktok", "youtube"] as const) {
-      expect(resolvePreviewLayout(p, false)).toBe("vertical");
-      expect(resolvePreviewLayout(p, true)).toBe("vertical");
+      expect(resolvePreviewLayout(p, false, 0)).toBe("vertical");
+      expect(resolvePreviewLayout(p, true, 1)).toBe("vertical");
     }
   });
 });

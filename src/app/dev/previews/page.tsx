@@ -23,8 +23,9 @@ const SAMPLE_IDENTITY = {
 
 // A clean inline gradient card in the platform's accent color stands in for
 // uploaded media — no R2/MinIO or network asset needed. Square (1080²) so feed
-// frames fill and 9:16 frames object-cover the centered content.
-function sampleImageFor(color: string): MediaAssetView {
+// frames fill and 9:16 frames object-cover the centered content. `n` varies the
+// id + a corner number so a multi-image carousel shows distinct slides.
+function sampleImageFor(color: string, n = 1): MediaAssetView {
   const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='1080' height='1080' viewBox='0 0 1080 1080'>
     <defs>
       <linearGradient id='g' x1='0' y1='0' x2='1' y2='1'>
@@ -42,10 +43,10 @@ function sampleImageFor(color: string): MediaAssetView {
     <circle cx='190' cy='900' r='230' fill='#000000' fill-opacity='0.10'/>
     <text x='540' y='512' font-family='ui-sans-serif, system-ui, sans-serif' font-size='96' font-weight='700' fill='#ffffff' text-anchor='middle'>Driftwood</text>
     <text x='540' y='620' font-family='ui-sans-serif, system-ui, sans-serif' font-size='96' font-weight='700' fill='#ffffff' text-anchor='middle'>Coffee</text>
-    <text x='540' y='706' font-family='ui-sans-serif, system-ui, sans-serif' font-size='32' fill='#ffffff' fill-opacity='0.75' text-anchor='middle' letter-spacing='8'>SAMPLE MEDIA</text>
+    <text x='540' y='706' font-family='ui-sans-serif, system-ui, sans-serif' font-size='32' fill='#ffffff' fill-opacity='0.75' text-anchor='middle' letter-spacing='8'>SAMPLE ${n}</text>
   </svg>`;
   return {
-    id: `sample-${color}`,
+    id: `sample-${color}-${n}`,
     kind: "image",
     url: `data:image/svg+xml,${encodeURIComponent(svg)}`,
     mimeType: "image/svg+xml",
@@ -86,9 +87,12 @@ export default function PreviewGalleryPage() {
         <p className="mt-1 text-sm text-muted-foreground">
           Every platform&apos;s feed-accurate preview with sample content — no
           account connection or seeded data required. Each row shows the same
-          post as an <strong>image</strong>, a <strong>video</strong> (Instagram
-          / Facebook switch to a 9:16 Reel; TikTok / YouTube are Shorts), and{" "}
-          <strong>text-only</strong>.
+          post as a <strong>mixed image + video carousel</strong> (swipe /
+          scroll — dots track position), a single <strong>video</strong>{" "}
+          (Instagram / Facebook switch to a 9:16 Reel; TikTok / YouTube are
+          Shorts), and <strong>text-only</strong>. Note: the sample video is a
+          placeholder poster, so it won&apos;t actually play here — video
+          playback (click ▶) works in the composer with a real upload.
         </p>
       </header>
 
@@ -105,7 +109,13 @@ export default function PreviewGalleryPage() {
               <PostPreview
                 platform={platform.id}
                 caption={SAMPLE_CAPTION}
-                assets={[sampleImageFor(platform.color)]}
+                // Image-led mixed set: image + video + image. Hero is an image,
+                // so IG/FB stay a feed carousel (not a Reel) with a video slide.
+                assets={[
+                  sampleImageFor(platform.color, 1),
+                  sampleVideoFor(platform.color),
+                  sampleImageFor(platform.color, 2),
+                ]}
                 identity={SAMPLE_IDENTITY}
               />
               <PostPreview

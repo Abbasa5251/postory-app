@@ -94,17 +94,20 @@ export function getPreviewChrome(platform: Platform): PreviewChrome {
 
 /**
  * The effective preview layout given the attached media. Always-vertical
- * platforms (TikTok / YouTube Shorts) stay vertical; a Reels-capable feed
- * platform (Instagram / Facebook) switches to the 9:16 vertical (Reel) chrome
- * when the media is a video; everything else stays a feed card.
+ * platforms (TikTok / YouTube Shorts) stay vertical. A Reels-capable feed
+ * platform (Instagram / Facebook) shows the 9:16 vertical (Reel) chrome ONLY for
+ * a **single video** — two+ items is a carousel (a feed card), even a mixed
+ * image+video one, so the reel switch requires `mediaCount === 1`. Everything
+ * else stays a feed card.
  */
 export function resolvePreviewLayout(
   platform: Platform,
-  hasVideo: boolean,
+  isVideoHero: boolean,
+  mediaCount: number,
 ): PreviewLayout {
   const chrome = PREVIEW_CHROME[platform];
   if (chrome.layout === "vertical") return "vertical";
-  if (hasVideo && chrome.reelsOnVideo) return "vertical";
+  if (chrome.reelsOnVideo && isVideoHero && mediaCount === 1) return "vertical";
   return "feed";
 }
 
