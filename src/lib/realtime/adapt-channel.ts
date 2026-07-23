@@ -29,11 +29,13 @@ export const adaptChannel = channel({
         caption: z.string(),
       }),
     },
-    // Completion signal: which platforms failed (if any) + every produced
-    // caption (durable fallback for any `adapted` message the client missed).
+    // Completion signal: which platforms failed to generate + which were blocked
+    // by D5 moderation (generated but withheld) + every PASSED caption (durable
+    // fallback for any `adapted` message the client missed).
     done: {
       schema: z.object({
         failed: z.array(postPlatformSchema),
+        blocked: z.array(postPlatformSchema),
         captions: z.array(
           z.object({ platform: postPlatformSchema, caption: z.string() }),
         ),

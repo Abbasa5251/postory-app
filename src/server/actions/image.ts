@@ -8,6 +8,8 @@ import { getBrandById } from "@/server/dal/brands";
 import { getActiveRate, getBalance } from "@/server/dal/credits";
 import { createJob } from "@/server/dal/generation-jobs";
 import { assertSufficientBalance } from "@/server/domain/credits";
+import { ModerationError } from "@/server/domain/errors";
+import { screenPrompt } from "@/server/domain/moderation";
 import { inngest } from "@/server/jobs/client";
 import { imageRequestedEvent } from "@/server/jobs/events";
 import { withAction } from "./with-action";
@@ -46,10 +48,19 @@ export const generateImage = withAction(
     // yields the brand voice profile that seasons the prompt (B2).
     const brand = await getBrandById(ctx, data.brandId);
 
+    // D5 prompt gate (deterministic, free, fail-fast): a blocked prompt never
+    // generates anything, so nothing is reserved or charged. Output moderation
+    // (the judge on each generated image) runs in the worker.
+    if (screenPrompt(data.prompt).blocked) throw new ModerationError();
+
     // Tier → credit_rates action; model id + per-image price from config.
     const rate = await getActiveRate(
       data.tier === "premium" ? "image_premium" : "image_standard",
     );
+    // D5: resolve the moderation judge model up front — a missing 'moderation'
+    // rate throws NOT_FOUND here (nothing generated/charged) rather than
+    // blocking-after-billing in the worker.
+    const moderationRate = await getActiveRate("moderation");
     const total = rate.credits * data.variantCount;
     // Fast-fail the whole batch so the UI shows INSUFFICIENT_CREDITS without
     // spinning up a job; the worker re-checks + reserves (authoritative, §8).
@@ -78,6 +89,7 @@ export const generateImage = withAction(
           brandId: data.brandId,
           creditsPerImage: rate.credits,
           modelId: rate.modelId,
+          moderationModelId: moderationRate.modelId,
           prompt: data.prompt,
           aspectRatio: data.aspectRatio,
           variantCount: data.variantCount,

@@ -3,6 +3,7 @@ import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { db } from "@/db/db";
 import { mediaAssets } from "@/db/schemas/media";
 import { postVersions } from "@/db/schemas/posts";
+import type { ModerationStatus } from "@/lib/validation/media";
 import { NotFoundError } from "@/server/domain/errors";
 import { buildAuditInsert, recordAuditEvent } from "./audit";
 import { getById as getGenerationJobById } from "./generation-jobs";
@@ -292,6 +293,52 @@ export async function deleteMediaAsset(
   ]);
   if (deleted.length === 0) throw new NotFoundError("media_asset", id);
   return { r2Key: asset.r2Key, brandId: asset.brandId };
+}
+
+/**
+ * Transition an asset's moderation status (D5 — "block + log"). §7 scoped fetch
+ * first (getMediaById 404s cross-org/unassigned), then an org-scoped
+ * `UPDATE ... RETURNING`; a 0-row result (the asset was deleted between the
+ * fetch and the update — a rare race) throws NotFoundError BEFORE any audit is
+ * written, so we never log a moderation decision for a row that no longer
+ * exists. Only after a confirmed update do we record the audit
+ * (`media.moderation_blocked` | `media.moderation_passed`) — the Case-B pattern
+ * (dal/audit.ts) since the flip is a low-stakes status change, not a credit
+ * write. Called from the generation job's SystemCtx after the output judge runs;
+ * the reason / categories (never the raw flagged content) go into the audit
+ * metadata. Only `passed`/`blocked` are valid transitions — `pending` is the
+ * insert-time default, never set here.
+ */
+export async function setModerationStatus(
+  ctx: AuthCtx,
+  id: string,
+  status: Extract<ModerationStatus, "passed" | "blocked">,
+  meta: { reason?: string | null; categories?: readonly string[] } = {},
+): Promise<void> {
+  const asset = await getMediaById(ctx, id);
+  const updated = await db
+    .update(mediaAssets)
+    .set({ moderationStatus: status })
+    .where(and(orgScope(ctx, mediaAssets), eq(mediaAssets.id, id)))
+    .returning({ id: mediaAssets.id });
+  // Throw BEFORE auditing so a raced 0-row update leaves no spurious audit row.
+  if (updated.length === 0) throw new NotFoundError("media_asset", id);
+  await recordAuditEvent(ctx, {
+    action:
+      status === "blocked"
+        ? "media.moderation_blocked"
+        : "media.moderation_passed",
+    entityType: "media_asset",
+    entityId: id,
+    metadata: {
+      brandId: asset.brandId,
+      source: asset.source,
+      ...(meta.reason ? { reason: meta.reason } : {}),
+      ...(meta.categories && meta.categories.length > 0
+        ? { categories: [...meta.categories] }
+        : {}),
+    },
+  });
 }
 
 /**

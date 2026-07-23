@@ -8,12 +8,14 @@ import {
   listMediaForBrand,
   recordGeneratedAsset,
   recordUpload,
+  setModerationStatus,
 } from "@/server/dal/media";
 import { NotFoundError } from "@/server/domain/errors";
 import { memberCtx, systemCtx } from "../helpers/ctx";
 import {
   captureDelete,
   captureInserts,
+  captureUpdate,
   makeBatch,
   makeSelectChain,
   renderedSql,
@@ -28,13 +30,16 @@ import {
  * tests/authz/README.md.
  */
 
-const { select, insert, del, batch } = vi.hoisted(() => ({
+const { select, insert, del, update, batch } = vi.hoisted(() => ({
   select: vi.fn(),
   insert: vi.fn(),
   del: vi.fn(),
+  update: vi.fn(),
   batch: vi.fn(),
 }));
-vi.mock("@/db/db", () => ({ db: { select, insert, delete: del, batch } }));
+vi.mock("@/db/db", () => ({
+  db: { select, insert, delete: del, update, batch },
+}));
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -300,6 +305,77 @@ describe("deleteMediaAsset — org-scoped delete + audit", () => {
     await expect(deleteMediaAsset(adminCtx, "media_1")).rejects.toBeInstanceOf(
       NotFoundError,
     );
+  });
+});
+
+describe("setModerationStatus — org-scoped update + audit (D5)", () => {
+  it("scopes the update to org_id + id and audits media.moderation_blocked with reason/categories", async () => {
+    makeSelectChain(select, [{ ...ASSET_ROW, source: "generated" }]); // getMediaById
+    const updateCall = captureUpdate(update, [{ id: "media_1" }]);
+    const inserts = captureInserts(insert, [{ id: "audit_1" }]);
+
+    await setModerationStatus(adminCtx, "media_1", "blocked", {
+      reason: "sexual/minors",
+      categories: ["sexual/minors"],
+    });
+
+    expect(type(updateCall.set).moderationStatus).toBe("blocked");
+    const { sql, params } = renderedSql(updateCall.where!);
+    expect(sql).toContain("org_id");
+    expect(params).toContain("org_1");
+    expect(params).toContain("media_1");
+    const audit = inserts.find(
+      (c) => type(c.values).action === "media.moderation_blocked",
+    );
+    expect(audit).toBeDefined();
+    // Metadata carries the reason/categories, never the flagged content itself.
+    expect(type(audit!.values).metadata).toMatchObject({
+      reason: "sexual/minors",
+      categories: ["sexual/minors"],
+    });
+  });
+
+  it("audits media.moderation_passed on a passed transition", async () => {
+    makeSelectChain(select, [{ ...ASSET_ROW, source: "generated" }]);
+    captureUpdate(update, [{ id: "media_1" }]);
+    const inserts = captureInserts(insert, [{ id: "audit_1" }]);
+
+    await setModerationStatus(adminCtx, "media_1", "passed");
+    expect(
+      inserts.some((c) => type(c.values).action === "media.moderation_passed"),
+    ).toBe(true);
+  });
+
+  it("404s (before update) when the asset is nonexistent / cross-org", async () => {
+    makeSelectChain(select, []); // getMediaById finds nothing
+    captureUpdate(update, []);
+    await expect(
+      setModerationStatus(adminCtx, "media_x", "blocked"),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("404s when a creator targets an asset on an unassigned brand", async () => {
+    const creatorCtx = memberCtx();
+    makeSelectChain(select, [{ ...ASSET_ROW, brandId: "brand_2" }]);
+    captureUpdate(update, []);
+    await expect(
+      setModerationStatus(creatorCtx, "media_1", "blocked"),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("404s on a raced 0-row update WITHOUT writing a spurious audit row", async () => {
+    makeSelectChain(select, [{ ...ASSET_ROW, source: "generated" }]);
+    captureUpdate(update, []); // 0-row update (asset deleted after the fetch)
+    const inserts = captureInserts(insert, [{ id: "audit_1" }]);
+    await expect(
+      setModerationStatus(adminCtx, "media_1", "passed"),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    // The audit is written only AFTER a confirmed update (Case-B) — a raced
+    // 0-row update must not leave a moderation audit for a row that's gone.
+    expect(inserts).toHaveLength(0);
+    expect(insert).not.toHaveBeenCalled();
   });
 });
 

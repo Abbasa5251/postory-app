@@ -287,6 +287,9 @@ function ImageStream({ job, count, onUse }: ImageStreamProps) {
     }
   }
   const assets = [...byId.values()];
+  const blockedCount = assets.filter(
+    (a) => a.moderationStatus !== "passed",
+  ).length;
 
   const doneMsg = messages.all.find((m) => m.topic === "done");
   const done = doneMsg
@@ -308,24 +311,41 @@ function ImageStream({ job, count, onUse }: ImageStreamProps) {
   return (
     <div className="flex flex-col gap-2">
       <div className="grid grid-cols-2 gap-2">
-        {assets.map((asset) => (
-          <div key={asset.id} className="flex flex-col gap-1.5">
-            {/* eslint-disable-next-line @next/next/no-img-element -- external R2/CDN URL, client-only (§7 SSRF-safe) */}
-            <img
-              src={asset.url}
-              alt="Generated image variant"
-              className="aspect-square w-full rounded-md border object-cover"
-            />
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => onUse(asset)}
-            >
-              Use this
-            </Button>
-          </div>
-        ))}
+        {assets.map((asset) => {
+          // D5: only a variant that PASSED moderation can be attached. A blocked
+          // variant is shown dimmed with a badge and a disabled action (it was
+          // still generated + charged — founder call).
+          const blocked = asset.moderationStatus !== "passed";
+          return (
+            <div key={asset.id} className="flex flex-col gap-1.5">
+              <div className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element -- external R2/CDN URL, client-only (§7 SSRF-safe) */}
+                <img
+                  src={asset.url}
+                  alt="Generated image variant"
+                  className={cn(
+                    "aspect-square w-full rounded-md border object-cover",
+                    blocked && "opacity-40",
+                  )}
+                />
+                {blocked && (
+                  <span className="absolute inset-x-0 bottom-0 rounded-b-md bg-destructive/90 px-1.5 py-0.5 text-center text-[10px] font-medium text-white">
+                    Blocked by moderation
+                  </span>
+                )}
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => onUse(asset)}
+                disabled={blocked}
+              >
+                {blocked ? "Blocked" : "Use this"}
+              </Button>
+            </div>
+          );
+        })}
         {/* Placeholders for variants still generating. */}
         {!done &&
           Array.from({ length: Math.max(0, count - assets.length) }).map(
@@ -344,12 +364,20 @@ function ImageStream({ job, count, onUse }: ImageStreamProps) {
           {connectionStatus === "open" ? "Generating…" : "Connecting…"}
         </p>
       ) : (
-        done.failed > 0 && (
-          <p className="text-xs text-muted-foreground">
-            {done.failed} image{done.failed === 1 ? "" : "s"} couldn&apos;t be
-            generated — those credits were refunded.
-          </p>
-        )
+        <>
+          {done.failed > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {done.failed} image{done.failed === 1 ? "" : "s"} couldn&apos;t be
+              generated — those credits were refunded.
+            </p>
+          )}
+          {blockedCount > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {blockedCount} image{blockedCount === 1 ? " was" : "s were"}{" "}
+              blocked by content moderation and can&apos;t be used.
+            </p>
+          )}
+        </>
       )}
     </div>
   );

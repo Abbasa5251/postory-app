@@ -9,6 +9,8 @@ import { getBrandById } from "@/server/dal/brands";
 import { getActiveRate, getBalance } from "@/server/dal/credits";
 import { createJob } from "@/server/dal/generation-jobs";
 import { assertSufficientBalance } from "@/server/domain/credits";
+import { ModerationError } from "@/server/domain/errors";
+import { screenPrompt } from "@/server/domain/moderation";
 import { inngest } from "@/server/jobs/client";
 import {
   copyAdaptRequestedEvent,
@@ -45,8 +47,22 @@ export const generateCopy = withAction(
     // yields the brand voice profile that shapes the prompt (B2).
     const brand = await getBrandById(ctx, data.brandId);
 
+    // D5 prompt gate (deterministic, fail-fast) on ALL client-supplied text —
+    // the brief, the refine instruction, AND the caption being refined
+    // (refineFrom) — a blocked prompt never generates anything (nothing spent).
+    // Output moderation on the generated captions runs in the worker.
+    if (
+      screenPrompt(
+        `${data.brief}\n${data.instruction ?? ""}\n${data.refineFrom ?? ""}`,
+      ).blocked
+    )
+      throw new ModerationError();
+
     // Model id + price from config (ADR-012), never hardcoded / client-supplied.
     const rate = await getActiveRate("copy");
+    // D5: resolve the moderation judge model up front (missing config → NOT_FOUND
+    // here, nothing generated/charged, vs blocking-after-billing in the worker).
+    const moderationRate = await getActiveRate("moderation");
     // Fast-fail so the UI shows INSUFFICIENT_CREDITS without spinning up a job;
     // the worker re-checks + reserves (the authoritative guard, §8).
     assertSufficientBalance(await getBalance(ctx), rate.credits);
@@ -73,6 +89,7 @@ export const generateCopy = withAction(
           brandId: data.brandId,
           credits: rate.credits,
           modelId: rate.modelId,
+          moderationModelId: moderationRate.modelId,
           platform: data.platform,
           brief: data.brief,
           voiceProfile,
@@ -115,7 +132,12 @@ export const adaptCopy = withAction(
     // yields the brand voice profile that shapes each adaptation (B2).
     const brand = await getBrandById(ctx, data.brandId);
 
+    // D5 prompt gate (deterministic, fail-fast) on the source caption.
+    if (screenPrompt(data.sourceCaption).blocked) throw new ModerationError();
+
     const rate = await getActiveRate("copy");
+    // D5: resolve the moderation judge model up front (see generateCopy).
+    const moderationRate = await getActiveRate("moderation");
     const total = rate.credits * data.platforms.length;
     // Fast-fail the whole batch so the UI shows INSUFFICIENT_CREDITS without
     // spinning up a job; the worker re-checks + reserves (authoritative, §8).
@@ -139,6 +161,7 @@ export const adaptCopy = withAction(
           brandId: data.brandId,
           creditsPerPlatform: rate.credits,
           modelId: rate.modelId,
+          moderationModelId: moderationRate.modelId,
           platforms: data.platforms,
           sourceCaption: data.sourceCaption,
           voiceProfile,

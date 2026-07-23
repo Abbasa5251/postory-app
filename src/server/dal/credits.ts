@@ -27,7 +27,11 @@ export type CreditAction =
   | "image_standard"
   | "image_premium"
   | "video_standard"
-  | "video_premium";
+  | "video_premium"
+  // D5: the content-moderation judge model (0 credits — a gate, never billed;
+  // read via getActiveRate("moderation") so the model id stays in config).
+  // Mirrors the credit_rates_action_check CHECK widened in this migration.
+  | "moderation";
 
 /**
  * Current credit balance for the org: SUM(delta) over the ledger, excluding

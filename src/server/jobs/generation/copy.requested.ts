@@ -7,13 +7,15 @@ import {
   refundCredits,
   reserveCredits,
 } from "@/server/dal/credits";
+import { recordAuditEvent } from "@/server/dal/audit";
 import { completeJob, getById, startJob } from "@/server/dal/generation-jobs";
 import {
   assertSufficientBalance,
   refundOnSettle,
 } from "@/server/domain/credits";
 import { buildCopyPrompt, parseVariants } from "@/server/domain/copy-prompt";
-import { streamCaption } from "@/server/services/openrouter";
+import { verdictFromJudge } from "@/server/domain/moderation";
+import { moderateText, streamCaption } from "@/server/services/openrouter";
 import { inngest } from "../client";
 import { copyRequestedEvent } from "../events";
 
@@ -113,8 +115,50 @@ export const generateCopyJob = inngest.createFunction(
 
     const variants = parseVariants(generated.text, d.variantCount);
 
+    // D5 output moderation — judge each generated variant (fail-closed: a judge
+    // error blocks that variant). Blocked variants are WITHHELD from the client
+    // (never offered for use) but the batch is still charged (§8: the generation
+    // succeeded + OpenRouter billed us; a block is not a refund). A separate step
+    // so it memoizes independently of the (streamed) generate step.
+    const passed = await step.run("moderate", async () => {
+      const results = await Promise.all(
+        variants.map(async (text) => {
+          try {
+            const raw = await moderateText({
+              modelId: d.moderationModelId,
+              text,
+            });
+            return { text, status: verdictFromJudge(raw).status };
+          } catch {
+            return { text, status: "blocked" as const };
+          }
+        }),
+      );
+      const kept = results
+        .filter((r) => r.status === "passed")
+        .map((r) => r.text);
+      const blocked = results.length - kept.length;
+      if (blocked > 0) {
+        // Block + log (D5). One aggregate audit for the run — never the flagged
+        // text itself (§ audit metadata is programmer-authored, no PII).
+        await recordAuditEvent(ctx, {
+          action: "moderation.block",
+          entityType: "generation_job",
+          entityId: d.jobId,
+          metadata: {
+            contentType: "copy",
+            platform: d.platform,
+            blocked,
+          },
+        });
+      }
+      return kept;
+    });
+    const blockedCount = variants.length - passed.length;
+
     // Copy is fixed-cost: used === reserved on success, so the settle refund is
-    // 0. The refundOnSettle seam is what D2's variable image cost will use.
+    // 0. Moderation blocks do NOT refund (the generation was billed). The
+    // refundOnSettle seam is what D2's variable image cost uses.
     await step.run("settle", async () => {
       const refund = refundOnSettle(d.credits, d.credits);
       if (refund > 0)
@@ -127,8 +171,9 @@ export const generateCopyJob = inngest.createFunction(
     });
 
     await step.realtime.publish("publish-done", copyChannel(d.jobId).done, {
-      variants,
+      variants: passed,
+      blocked: blockedCount,
     });
-    return { jobId: d.jobId, variants: variants.length };
+    return { jobId: d.jobId, variants: passed.length, blocked: blockedCount };
   },
 );

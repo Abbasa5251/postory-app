@@ -208,9 +208,13 @@ function CopyStream({ job, onApply, onRefine }: CopyStreamProps) {
     .map((m) => (m.data as { text: string }).text)
     .join("");
   const doneMsg = messages.all.find((m) => m.topic === "done");
-  const variants = doneMsg
-    ? (doneMsg.data as { variants: string[] }).variants
+  const done = doneMsg
+    ? (doneMsg.data as { variants: string[]; blocked: number })
     : null;
+  // Only the variants that PASSED D5 moderation; `blocked` is how many were
+  // withheld (still charged — the batch was generated).
+  const variants = done ? done.variants : null;
+  const blockedCount = done ? done.blocked : 0;
   const errorMsg = messages.all.find((m) => m.topic === "error");
   const errorText = errorMsg
     ? (errorMsg.data as { message: string }).message
@@ -239,6 +243,13 @@ function CopyStream({ job, onApply, onRefine }: CopyStreamProps) {
 
   return (
     <div className="flex flex-col gap-2">
+      {blockedCount > 0 && (
+        <p role="alert" className="text-xs text-muted-foreground">
+          {blockedCount} caption{blockedCount === 1 ? " was" : "s were"} blocked
+          by content moderation and hidden.
+          {variants.length === 0 ? " Try rephrasing your brief." : ""}
+        </p>
+      )}
       {variants.map((variant, i) => (
         <div key={i} className="rounded-md border p-3">
           <p className="text-sm whitespace-pre-wrap">{variant}</p>

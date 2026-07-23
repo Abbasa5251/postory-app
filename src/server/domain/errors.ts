@@ -58,6 +58,27 @@ export class InsufficientCreditsError extends DomainError {
 }
 
 /**
+ * Content moderation blocked a request (D5). Raised by the prompt gate (a
+ * blocked prompt never generates anything, so nothing is reserved or charged);
+ * safe to reveal — it's the caller's own input — but the message stays generic
+ * so it can't be used to probe the exact blocklist. `withAction` maps the
+ * MODERATION_BLOCKED code without reporting to Sentry (an expected failure, not
+ * a bug). Output-side blocks (a generated image/caption flagged AFTER a billed
+ * generation) are NOT this error — they are recorded on the asset/job + audited
+ * inside the Inngest job, not surfaced as an action failure.
+ */
+export class ModerationError extends DomainError {
+  readonly code = "MODERATION_BLOCKED";
+
+  constructor(
+    message = "This request was blocked by content moderation. Please revise it and try again.",
+  ) {
+    super(message);
+    this.name = "ModerationError";
+  }
+}
+
+/**
  * An uploaded object failed the server-authoritative media gate (C4, D-C4-3):
  * the actual (HEAD-read) MIME type or size is unsupported, or the object is
  * missing (the client never completed the PUT). Safe to reveal — it's the
