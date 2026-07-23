@@ -16,17 +16,52 @@ import {
   submitPost as submitPostDal,
   updateDraft,
 } from "@/server/dal/posts";
+import type { MemberCtx } from "@/server/dal/types";
+import { inngest } from "@/server/jobs/client";
+import { postNotificationEvent } from "@/server/jobs/events";
+import { log } from "@/server/services/observability";
+import { revalidatePostSurfaces } from "./revalidate";
 import { withAction } from "./with-action";
 
 /**
- * Revalidate the surfaces a post transition can affect: the brand composer
- * (edit lock changes), the brand posts list, and the cross-brand review queue
- * (E2 — a top-level, non-brand-scoped route).
+ * Fire an E3 lifecycle notification (submit/approve/request-changes) off the
+ * request path (§16 / ADR-003 — email is a network call, the job sends it). The
+ * event carries only trusted ids from the ctx; the job resolves recipients +
+ * content from the org-scoped DAL and excludes the actor. Best-effort: a failed
+ * enqueue never fails the transition the user already committed — it's logged
+ * and swallowed (the notification is a side-effect, not the mutation).
  */
-function revalidatePostSurfaces(brandId: string): void {
-  revalidatePath(`/brands/${brandId}/composer`);
-  revalidatePath(`/brands/${brandId}/posts`);
-  revalidatePath("/approvals");
+async function notifyTransition(
+  ctx: MemberCtx,
+  kind: "submitted" | "approved" | "changes_requested",
+  postId: string,
+  brandId: string,
+  note?: string,
+): Promise<void> {
+  try {
+    await inngest.send(
+      postNotificationEvent.create(
+        {
+          kind,
+          orgId: ctx.orgId,
+          postId,
+          brandId,
+          actorMemberId: ctx.memberId,
+          note,
+        },
+        // Unique per transition (a re-submit after changes is a distinct
+        // event); Inngest's 24h id dedupe just guards an accidental double-send.
+        { id: `notify:${kind}:${postId}:${Date.now()}` },
+      ),
+    );
+  } catch (error) {
+    log.error("failed to enqueue post notification", {
+      event: "post.notification.enqueue_failed",
+      kind,
+      postId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 /**
@@ -74,6 +109,7 @@ export const submitPost = withAction(
     const post = await getDraftById(ctx, data.postId);
     const result = await submitPostDal(ctx, { postId: data.postId });
     revalidatePostSurfaces(post.brandId);
+    await notifyTransition(ctx, "submitted", data.postId, post.brandId);
     return { id: result.id, status: result.status };
   },
 );
@@ -93,6 +129,13 @@ export const approvePost = withAction(
       note: data.note,
     });
     revalidatePostSurfaces(post.brandId);
+    await notifyTransition(
+      ctx,
+      "approved",
+      data.postId,
+      post.brandId,
+      data.note,
+    );
     return { id: result.id, status: result.status };
   },
 );
@@ -111,6 +154,13 @@ export const requestChanges = withAction(
       note: data.note,
     });
     revalidatePostSurfaces(post.brandId);
+    await notifyTransition(
+      ctx,
+      "changes_requested",
+      data.postId,
+      post.brandId,
+      data.note,
+    );
     return { id: result.id, status: result.status };
   },
 );
