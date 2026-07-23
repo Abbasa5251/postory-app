@@ -9,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { PLATFORM_LIST } from "@/lib/platforms/config";
+import { getPlatformConfig, PLATFORM_LIST } from "@/lib/platforms/config";
 import { approvalFilterParsers } from "./search-params";
 
 const ALL = "all";
@@ -35,6 +35,11 @@ export function ApprovalsFilters({
   });
   const hasFilters = Boolean(filters.workspace || filters.platform);
 
+  // Base UI's SelectValue renders the raw value (a brand id / platform id) by
+  // default — map it to the human label for the trigger. The dropdown items
+  // already show the label; this keeps the collapsed trigger consistent.
+  const brandName = new Map(brands.map((b) => [b.id, b.name]));
+
   return (
     <div className="flex items-center gap-2">
       <Select
@@ -45,7 +50,13 @@ export function ApprovalsFilters({
         }}
       >
         <SelectTrigger size="sm" className="w-40" aria-label="Workspace">
-          <SelectValue />
+          <SelectValue>
+            {(value) =>
+              value && value !== ALL
+                ? (brandName.get(value) ?? "All workspaces")
+                : "All workspaces"
+            }
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL}>All workspaces</SelectItem>
@@ -68,7 +79,13 @@ export function ApprovalsFilters({
         }}
       >
         <SelectTrigger size="sm" className="w-40" aria-label="Platform">
-          <SelectValue />
+          <SelectValue>
+            {(value) =>
+              value && value !== ALL
+                ? (getPlatformConfig(value)?.label ?? "All platforms")
+                : "All platforms"
+            }
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL}>All platforms</SelectItem>
