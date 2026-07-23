@@ -1,7 +1,7 @@
 "use client";
 
 import { ImageIcon } from "lucide-react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useQueryStates } from "nuqs";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Label } from "@/components/ui/label";
@@ -12,15 +12,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { MediaFacets } from "@/lib/validation/media";
 import { AssetCard } from "./asset-card";
+import {
+  mediaFilterParsers,
+  type MediaKind,
+  type MediaModeration,
+  type MediaSource,
+} from "./search-params";
 import type { MediaLibraryItem } from "./types";
 
-/**
- * Facet groups → URL params. Each has an "All" sentinel (`all`) that clears the
- * param. Values mirror the media_assets vocabularies; the `moderation` param
- * maps to the moderation_status column server-side.
- */
+/** Facet groups → the nuqs param keys. Values mirror the media_assets
+ * vocabularies; the `moderation` key maps to the moderation_status column. */
 const FACET_GROUPS = [
   {
     param: "kind",
@@ -52,37 +54,41 @@ const FACET_GROUPS = [
 const ALL = "all";
 
 /**
- * The D4 asset-library surface: an inline row of facet dropdowns (matching the
- * mockup) over a responsive grid of asset cards. Filtering is URL-driven — a
- * dropdown pushes a `searchParams` change and the RSC page re-fetches
- * server-side (no client data fetch). Purely reads props threaded from the page.
+ * The D4 asset-library surface: an inline row of labelled facet dropdowns over
+ * a responsive grid of asset cards. Filter state lives in the URL via **nuqs**
+ * (`useQueryStates`, `shallow: false`) — changing a dropdown updates the query
+ * string and re-renders the server page, which re-runs the scoped DAL read. No
+ * client data fetch; the parser map is shared with the page (search-params.ts).
  */
 export function AssetLibrary({
   brandId,
   items,
-  facets,
 }: {
   brandId: string;
   items: MediaLibraryItem[];
-  facets: MediaFacets;
 }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
+  const [filters, setFilters] = useQueryStates(mediaFilterParsers, {
+    shallow: false,
+  });
+  const hasFilters = Boolean(
+    filters.kind || filters.source || filters.moderation,
+  );
 
-  const active: Record<string, string | undefined> = {
-    kind: facets.kind,
-    source: facets.source,
-    moderation: facets.moderation,
-  };
-  const hasFilters = Object.values(active).some(Boolean);
+  function setFacet(
+    param: (typeof FACET_GROUPS)[number]["param"],
+    value: string,
+  ) {
+    // `value` is either ALL or one of this group's literal options (the Select
+    // items), so the per-key cast to the parser's literal type is sound.
+    const v = value === ALL ? null : value;
+    if (param === "kind") void setFilters({ kind: v as MediaKind | null });
+    else if (param === "source")
+      void setFilters({ source: v as MediaSource | null });
+    else void setFilters({ moderation: v as MediaModeration | null });
+  }
 
-  function setFacet(param: string, value: string) {
-    const next = new URLSearchParams(searchParams.toString());
-    if (value === ALL) next.delete(param);
-    else next.set(param, value);
-    const query = next.toString();
-    router.push(query ? `${pathname}?${query}` : pathname);
+  function clearAll() {
+    void setFilters({ kind: null, source: null, moderation: null });
   }
 
   return (
@@ -99,7 +105,7 @@ export function AssetLibrary({
                 {group.label}
               </Label>
               <Select
-                value={active[group.param] ?? ALL}
+                value={filters[group.param] ?? ALL}
                 onValueChange={(value) => setFacet(group.param, value ?? ALL)}
               >
                 <SelectTrigger id={triggerId} className="w-40">
@@ -118,12 +124,7 @@ export function AssetLibrary({
           );
         })}
         {hasFilters && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => router.push(pathname)}
-          >
+          <Button type="button" variant="ghost" size="sm" onClick={clearAll}>
             Clear
           </Button>
         )}
@@ -140,11 +141,7 @@ export function AssetLibrary({
           }
           action={
             hasFilters ? (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => router.push(pathname)}
-              >
+              <Button type="button" variant="outline" onClick={clearAll}>
                 Clear filters
               </Button>
             ) : undefined

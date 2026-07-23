@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { AuthProvider } from "@/components/auth/auth-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { authClient } from "@/lib/auth-client";
@@ -35,7 +36,7 @@ export function Providers({
       Link={Link}
       plugins={plugins}
     >
-      {children}
+      <NuqsAdapter>{children}</NuqsAdapter>
       <Toaster />
     </AuthProvider>
   );

@@ -1,8 +1,8 @@
 import { AssetLibrary } from "@/components/features/media/asset-library";
+import { loadMediaFilters } from "@/components/features/media/search-params";
 import type { MediaLibraryItem } from "@/components/features/media/types";
 import { UploadMediaButton } from "@/components/features/media/upload-media-button";
 import { PageHeader } from "@/components/features/shell/page-header";
-import { mediaFacetSchema } from "@/lib/validation/media";
 import { countMediaUsage, listMediaForBrand } from "@/server/dal/media";
 import { publicUrl } from "@/server/services/storage";
 import { requireBrand } from "../_lib/require-brand";
@@ -21,14 +21,16 @@ export default async function MediaPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { brandId } = await params;
-  // Facets degrade to "unfiltered" on a bad value (each field .catches).
-  const facets = mediaFacetSchema.parse(await searchParams);
+  // nuqs loader — the single parser source shared with the client filter row.
+  // Absent/invalid values parse to null (→ unfiltered), so a hand-edited query
+  // degrades cleanly.
+  const filters = await loadMediaFilters(searchParams);
   const { ctx, brand } = await requireBrand(brandId);
 
   const assets = await listMediaForBrand(ctx, brandId, {
-    kind: facets.kind,
-    source: facets.source,
-    moderationStatus: facets.moderation,
+    kind: filters.kind ?? undefined,
+    source: filters.source ?? undefined,
+    moderationStatus: filters.moderation ?? undefined,
     limit: LIBRARY_PAGE_SIZE,
   });
   // One org-scoped aggregate for the whole page — how many posts use each asset.
@@ -60,7 +62,7 @@ export default async function MediaPage({
         description={`Every asset uploaded or generated for ${brand.name}.`}
         actions={<UploadMediaButton brandId={brandId} />}
       />
-      <AssetLibrary brandId={brandId} items={items} facets={facets} />
+      <AssetLibrary brandId={brandId} items={items} />
     </div>
   );
 }
