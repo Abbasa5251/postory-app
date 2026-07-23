@@ -1,5 +1,6 @@
 import { AssetLibrary } from "@/components/features/media/asset-library";
 import type { MediaLibraryItem } from "@/components/features/media/types";
+import { UploadMediaButton } from "@/components/features/media/upload-media-button";
 import { PageHeader } from "@/components/features/shell/page-header";
 import { mediaFacetSchema } from "@/lib/validation/media";
 import { countMediaUsage, listMediaForBrand } from "@/server/dal/media";
@@ -56,7 +57,8 @@ export default async function MediaPage({
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Media library"
-        description={`Uploaded and AI-generated media for ${brand.name}.`}
+        description={`Every asset uploaded or generated for ${brand.name}.`}
+        actions={<UploadMediaButton brandId={brandId} />}
       />
       <AssetLibrary brandId={brandId} items={items} facets={facets} />
     </div>

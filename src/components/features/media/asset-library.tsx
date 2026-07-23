@@ -4,16 +4,26 @@ import { ImageIcon } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { MediaFacets } from "@/lib/validation/media";
 import { AssetCard } from "./asset-card";
 import type { MediaLibraryItem } from "./types";
 
-/** Facet groups → URL params. Values mirror the media_assets vocabularies; the
- * `moderation` param maps to the moderation_status column server-side. */
+/**
+ * Facet groups → URL params. Each has an "All" sentinel (`all`) that clears the
+ * param. Values mirror the media_assets vocabularies; the `moderation` param
+ * maps to the moderation_status column server-side.
+ */
 const FACET_GROUPS = [
   {
     param: "kind",
-    label: "Type",
+    allLabel: "All types",
     options: [
       { value: "image", label: "Images" },
       { value: "video", label: "Videos" },
@@ -21,7 +31,7 @@ const FACET_GROUPS = [
   },
   {
     param: "source",
-    label: "Source",
+    allLabel: "All sources",
     options: [
       { value: "upload", label: "Uploaded" },
       { value: "generated", label: "AI-generated" },
@@ -29,7 +39,7 @@ const FACET_GROUPS = [
   },
   {
     param: "moderation",
-    label: "Status",
+    allLabel: "All statuses",
     options: [
       { value: "pending", label: "Pending" },
       { value: "passed", label: "Approved" },
@@ -38,11 +48,13 @@ const FACET_GROUPS = [
   },
 ] as const;
 
+const ALL = "all";
+
 /**
- * The D4 asset-library surface: facet filter chips + a responsive grid of
- * asset cards. Filtering is URL-driven — a chip pushes a `searchParams` change
- * and the RSC page re-fetches server-side (no client data fetch, matching the
- * app's server-first data flow). Purely reads props threaded from the page.
+ * The D4 asset-library surface: an inline row of facet dropdowns (matching the
+ * mockup) over a responsive grid of asset cards. Filtering is URL-driven — a
+ * dropdown pushes a `searchParams` change and the RSC page re-fetches
+ * server-side (no client data fetch). Purely reads props threaded from the page.
  */
 export function AssetLibrary({
   brandId,
@@ -64,9 +76,9 @@ export function AssetLibrary({
   };
   const hasFilters = Object.values(active).some(Boolean);
 
-  function setFacet(param: string, value: string | null) {
+  function setFacet(param: string, value: string) {
     const next = new URLSearchParams(searchParams.toString());
-    if (value === null) next.delete(param);
+    if (value === ALL) next.delete(param);
     else next.set(param, value);
     const query = next.toString();
     router.push(query ? `${pathname}?${query}` : pathname);
@@ -74,39 +86,36 @@ export function AssetLibrary({
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-col gap-3">
-        {FACET_GROUPS.map((group) => {
-          const current = active[group.param];
-          return (
-            <div
-              key={group.param}
-              className="flex flex-wrap items-center gap-2"
-            >
-              <span className="w-16 shrink-0 text-xs font-medium text-muted-foreground">
-                {group.label}
-              </span>
-              <Button
-                type="button"
-                size="sm"
-                variant={current ? "outline" : "secondary"}
-                onClick={() => setFacet(group.param, null)}
-              >
-                All
-              </Button>
+      <div className="flex flex-wrap items-center gap-2">
+        {FACET_GROUPS.map((group) => (
+          <Select
+            key={group.param}
+            value={active[group.param] ?? ALL}
+            onValueChange={(value) => setFacet(group.param, value ?? ALL)}
+          >
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>{group.allLabel}</SelectItem>
               {group.options.map((option) => (
-                <Button
-                  key={option.value}
-                  type="button"
-                  size="sm"
-                  variant={current === option.value ? "secondary" : "outline"}
-                  onClick={() => setFacet(group.param, option.value)}
-                >
+                <SelectItem key={option.value} value={option.value}>
                   {option.label}
-                </Button>
+                </SelectItem>
               ))}
-            </div>
-          );
-        })}
+            </SelectContent>
+          </Select>
+        ))}
+        {hasFilters && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => router.push(pathname)}
+          >
+            Clear
+          </Button>
+        )}
       </div>
 
       {items.length === 0 ? (
