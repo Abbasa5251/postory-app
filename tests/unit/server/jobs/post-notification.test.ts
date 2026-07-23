@@ -14,6 +14,7 @@ const {
   getBrandById,
   getDraftById,
   getCommentById,
+  listBrandMemberIds,
   listOrgReviewers,
   getPostAuthor,
   getMembersByIds,
@@ -32,6 +33,7 @@ const {
   getBrandById: vi.fn(),
   getDraftById: vi.fn(),
   getCommentById: vi.fn(),
+  listBrandMemberIds: vi.fn(),
   listOrgReviewers: vi.fn(),
   getPostAuthor: vi.fn(),
   getMembersByIds: vi.fn(),
@@ -46,6 +48,7 @@ vi.mock("@/server/auth/context", () => ({ getSystemCtx }));
 vi.mock("@/server/dal/brands", () => ({ getBrandById }));
 vi.mock("@/server/dal/posts", () => ({ getDraftById }));
 vi.mock("@/server/dal/comments", () => ({ getCommentById }));
+vi.mock("@/server/dal/brand-members", () => ({ listBrandMemberIds }));
 vi.mock("@/server/dal/org", () => ({
   listOrgReviewers,
   getPostAuthor,
@@ -95,12 +98,14 @@ function run(data: Record<string, unknown>) {
 const base = { orgId: "org_1", postId: "post_1", brandId: "brand_1" };
 
 describe("postNotificationJob", () => {
-  it("submitted → emails every reviewer except the actor", async () => {
+  it("submitted → emails every brand-assigned reviewer except the actor", async () => {
     listOrgReviewers.mockResolvedValue([
       { memberId: "m_actor", name: "Alice", email: "a@x.co" },
       { memberId: "m2", name: "Bob", email: "b@x.co" },
       { memberId: "m3", name: "Cara", email: "c@x.co" },
     ]);
+    // All three are assigned to the brand.
+    listBrandMemberIds.mockResolvedValue(["m_actor", "m2", "m3"]);
 
     const { result, error } = await run({
       ...base,
@@ -117,6 +122,25 @@ describe("postNotificationJob", () => {
     expect(sendPostSubmittedEmail.mock.calls[0]![0].url).toContain(
       "/approvals",
     );
+  });
+
+  it("submitted → excludes a reviewer not assigned to the brand (E2 scoping)", async () => {
+    listOrgReviewers.mockResolvedValue([
+      { memberId: "m2", name: "Bob", email: "b@x.co" },
+      { memberId: "m3", name: "Cara", email: "c@x.co" },
+    ]);
+    // Only m2 is assigned to this brand; m3 must not be emailed.
+    listBrandMemberIds.mockResolvedValue(["m2"]);
+
+    const { result } = await run({
+      ...base,
+      kind: "submitted",
+      actorMemberId: "m_actor",
+    });
+    expect(result).toMatchObject({ sent: 1 });
+    expect(sendPostSubmittedEmail.mock.calls.map((c) => c[0].to)).toEqual([
+      "b@x.co",
+    ]);
   });
 
   it("approved → emails the post author", async () => {
@@ -184,6 +208,7 @@ describe("postNotificationJob", () => {
       { memberId: "m2", name: "Bob", email: "b@x.co" },
       { memberId: "m3", name: "Cara", email: "c@x.co" },
     ]);
+    listBrandMemberIds.mockResolvedValue(["m2", "m3"]);
     sendPostSubmittedEmail.mockRejectedValueOnce(new Error("bounce"));
 
     const { result, error } = await run({

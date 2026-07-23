@@ -6,6 +6,7 @@ CREATE TABLE "comment_mentions" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+ALTER TABLE "comments" ADD CONSTRAINT "comments_org_id_id_key" UNIQUE("org_id","id");--> statement-breakpoint
 CREATE UNIQUE INDEX "comment_mentions_comment_member_uidx" ON "comment_mentions" ("comment_id","mentioned_member_id");--> statement-breakpoint
 CREATE INDEX "comment_mentions_org_member_idx" ON "comment_mentions" ("org_id","mentioned_member_id");--> statement-breakpoint
 ALTER TABLE "comment_mentions" ADD CONSTRAINT "comment_mentions_org_id_organization_id_fkey" FOREIGN KEY ("org_id") REFERENCES "organization"("id") ON DELETE CASCADE;--> statement-breakpoint

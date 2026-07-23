@@ -1,4 +1,5 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/db";
 import { commentMentions, comments } from "@/db/schemas/approvals";
@@ -6,7 +7,7 @@ import { member, user } from "@/db/schemas/auth";
 import { posts } from "@/db/schemas/posts";
 import { parseMentionIds } from "@/lib/mentions";
 import { NotFoundError } from "@/server/domain/errors";
-import { buildAuditInsert, recordAuditEvent } from "./audit";
+import { buildAuditInsert } from "./audit";
 import { getMembersByIds } from "./org";
 import { getDraftById } from "./posts";
 import { brandScope, orgScope } from "./scope";
@@ -160,9 +161,11 @@ async function mentionsFor(
  * written. Returns the post's brandId (for revalidation) and the validated
  * mentioned member ids (for the notification event).
  *
- * Case-B write (§6.6): the comment body is the durable artifact; mention rows +
- * audit are derived, so we insert the comment, then its mentions, then audit.
- * A rare partial failure only drops mention emails — never the comment.
+ * Atomic write (§6.6): the comment id is generated app-side so the comment
+ * insert, its mention rows, and the audit row commit in ONE db.batch (a
+ * DB-generated id can't be referenced by sibling statements). A v4 id is fine —
+ * comments order by created_at, not id. So a mention/audit failure rolls the
+ * comment back too; there is never a comment without an audit entry.
  */
 export async function createComment(
   ctx: AuthCtx,
@@ -176,36 +179,36 @@ export async function createComment(
   const validMentions = await getMembersByIds(ctx, mentionIds);
   const mentionedMemberIds = validMentions.map((m) => m.memberId);
 
-  const [row] = await db
-    .insert(comments)
-    .values({
-      orgId: ctx.orgId,
-      postId: input.postId,
-      body: input.body,
-      anchor: input.anchor ?? null,
-      authorMemberId: actorMemberId(ctx),
-    })
-    .returning({ id: comments.id });
-  if (!row) throw new NotFoundError("post", input.postId);
-
-  if (mentionedMemberIds.length > 0) {
-    await db.insert(commentMentions).values(
-      mentionedMemberIds.map((memberId) => ({
-        orgId: ctx.orgId,
-        commentId: row.id,
-        mentionedMemberId: memberId,
-      })),
-    );
-  }
-
-  await recordAuditEvent(ctx, {
+  const id = randomUUID();
+  const commentInsert = db.insert(comments).values({
+    id,
+    orgId: ctx.orgId,
+    postId: input.postId,
+    body: input.body,
+    anchor: input.anchor ?? null,
+    authorMemberId: actorMemberId(ctx),
+  });
+  const auditInsert = buildAuditInsert(ctx, {
     action: "comment.create",
     entityType: "comment",
-    entityId: row.id,
+    entityId: id,
     metadata: { postId: input.postId, mentionCount: mentionedMemberIds.length },
   });
 
-  return { id: row.id, brandId: post.brandId, mentionedMemberIds };
+  if (mentionedMemberIds.length > 0) {
+    const mentionInsert = db.insert(commentMentions).values(
+      mentionedMemberIds.map((memberId) => ({
+        orgId: ctx.orgId,
+        commentId: id,
+        mentionedMemberId: memberId,
+      })),
+    );
+    await db.batch([commentInsert, mentionInsert, auditInsert]);
+  } else {
+    await db.batch([commentInsert, auditInsert]);
+  }
+
+  return { id, brandId: post.brandId, mentionedMemberIds };
 }
 
 /**

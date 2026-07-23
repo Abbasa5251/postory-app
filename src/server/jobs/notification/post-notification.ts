@@ -3,6 +3,7 @@ import { toPlainText } from "@/lib/mentions";
 import type { PostContent } from "@/lib/validation/posts";
 import { env } from "@/lib/env/server";
 import { getSystemCtx } from "@/server/auth/context";
+import { listBrandMemberIds } from "@/server/dal/brand-members";
 import { getBrandById } from "@/server/dal/brands";
 import { getCommentById } from "@/server/dal/comments";
 import {
@@ -70,9 +71,19 @@ export const postNotificationJob = inngest.createFunction(
       // Recipients by kind, with the actor removed.
       let recipients: NotifyRecipient[];
       switch (data.kind) {
-        case "submitted":
-          recipients = await listOrgReviewers(ctx);
+        case "submitted": {
+          // Reviewers ASSIGNED to this brand (brand_members) — mirrors the E2
+          // approvals surface, which scopes reviewer visibility to assignments
+          // for every role. Emailing an unassigned reviewer would land them on
+          // an empty queue (and leak the caption excerpt), so intersect.
+          const [reviewers, assignedIds] = await Promise.all([
+            listOrgReviewers(ctx),
+            listBrandMemberIds(ctx, data.brandId),
+          ]);
+          const assigned = new Set(assignedIds);
+          recipients = reviewers.filter((r) => assigned.has(r.memberId));
           break;
+        }
         case "approved":
         case "changes_requested": {
           const author = await getPostAuthor(ctx, data.postId);

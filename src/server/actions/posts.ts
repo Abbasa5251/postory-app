@@ -34,8 +34,7 @@ import { withAction } from "./with-action";
 async function notifyTransition(
   ctx: MemberCtx,
   kind: "submitted" | "approved" | "changes_requested",
-  postId: string,
-  brandId: string,
+  post: { id: string; brandId: string; currentVersionId: string | null },
   note?: string,
 ): Promise<void> {
   try {
@@ -44,21 +43,26 @@ async function notifyTransition(
         {
           kind,
           orgId: ctx.orgId,
-          postId,
-          brandId,
+          postId: post.id,
+          brandId: post.brandId,
           actorMemberId: ctx.memberId,
           note,
         },
-        // Unique per transition (a re-submit after changes is a distinct
-        // event); Inngest's 24h id dedupe just guards an accidental double-send.
-        { id: `notify:${kind}:${postId}:${Date.now()}` },
+        // Stable per (kind, post, version): a genuine re-submit after changes
+        // targets a NEW version → a new id → a new notification, while an
+        // accidental double-fire of the SAME transition is deduped by Inngest's
+        // 24h id window. A version-less draft can't be transitioned, so the
+        // fallback is unreachable in practice.
+        {
+          id: `notify:${kind}:${post.id}:${post.currentVersionId ?? "none"}`,
+        },
       ),
     );
   } catch (error) {
     log.error("failed to enqueue post notification", {
       event: "post.notification.enqueue_failed",
       kind,
-      postId,
+      postId: post.id,
       error: error instanceof Error ? error.message : String(error),
     });
   }
@@ -109,7 +113,7 @@ export const submitPost = withAction(
     const post = await getDraftById(ctx, data.postId);
     const result = await submitPostDal(ctx, { postId: data.postId });
     revalidatePostSurfaces(post.brandId);
-    await notifyTransition(ctx, "submitted", data.postId, post.brandId);
+    await notifyTransition(ctx, "submitted", post);
     return { id: result.id, status: result.status };
   },
 );
@@ -129,13 +133,7 @@ export const approvePost = withAction(
       note: data.note,
     });
     revalidatePostSurfaces(post.brandId);
-    await notifyTransition(
-      ctx,
-      "approved",
-      data.postId,
-      post.brandId,
-      data.note,
-    );
+    await notifyTransition(ctx, "approved", post, data.note);
     return { id: result.id, status: result.status };
   },
 );
@@ -154,13 +152,7 @@ export const requestChanges = withAction(
       note: data.note,
     });
     revalidatePostSurfaces(post.brandId);
-    await notifyTransition(
-      ctx,
-      "changes_requested",
-      data.postId,
-      post.brandId,
-      data.note,
-    );
+    await notifyTransition(ctx, "changes_requested", post, data.note);
     return { id: result.id, status: result.status };
   },
 );

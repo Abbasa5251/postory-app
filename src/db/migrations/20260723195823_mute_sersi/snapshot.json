@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "6ba5c3f6-3c00-45a2-931e-243c02631c4d",
+  "id": "ead84a18-5788-4b90-9551-6afa051aedd5",
   "prevIds": [
     "52d50b32-f127-4b45-ac0f-e48c31790d7c"
   ],
@@ -6059,6 +6059,18 @@
       "schema": "public",
       "table": "webhook_events",
       "entityType": "pks"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        "org_id",
+        "id"
+      ],
+      "nullsNotDistinct": false,
+      "name": "comments_org_id_id_key",
+      "entityType": "uniques",
+      "schema": "public",
+      "table": "comments"
     },
     {
       "nameExplicit": true,

@@ -104,36 +104,40 @@ describe("listCommentsForPosts — org scoping", () => {
 });
 
 describe("createComment — writes org_id from ctx, validates mentions, audits", () => {
-  it("sets org_id on the comment + mention rows and audits comment.create", async () => {
+  it("atomically inserts the comment + mention rows + audit with org_id from ctx", async () => {
     const body = `hi ${mentionMarker("Jane", ID_A)}`;
     // getDraftById → post; getMembersByIds → the mentioned member is in-org.
     queueSelects([
       [draftRow("brand_1")],
       [{ memberId: ID_A, name: "Jane", email: "j@x.co" }],
     ]);
-    const inserts = captureInserts(insert, [{ id: "comment_1" }]);
+    const inserts = captureInserts(insert);
+    makeBatch(batch);
 
     const result = await createComment(adminCtx, { postId: "post_1", body });
 
-    expect(result).toEqual({
-      id: "comment_1",
-      brandId: "brand_1",
-      mentionedMemberIds: [ID_A],
-    });
+    // App-generated id (atomic batch, not a DB-returned id); brand + mentions echoed.
+    expect(typeof result.id).toBe("string");
+    expect(result.brandId).toBe("brand_1");
+    expect(result.mentionedMemberIds).toEqual([ID_A]);
 
     const commentInsert = inserts.find((c) => "body" in type(c.values));
     expect(type(commentInsert!.values).orgId).toBe("org_1");
     expect(type(commentInsert!.values).postId).toBe("post_1");
     expect(type(commentInsert!.values).authorMemberId).toBe("member_1");
+    // The comment carries the app-generated id the result reports.
+    expect(type(commentInsert!.values).id).toBe(result.id);
 
     const mentionInsert = inserts.find(
       (c) => "mentionedMemberId" in type((c.values as unknown[])?.[0] ?? {}),
     );
     const mentionRows = mentionInsert!.values as Record<string, unknown>[];
     expect(mentionRows[0]!.orgId).toBe("org_1");
-    expect(mentionRows[0]!.commentId).toBe("comment_1");
+    // Mentions bind to the same app-generated comment id (atomicity, not a race).
+    expect(mentionRows[0]!.commentId).toBe(result.id);
     expect(mentionRows[0]!.mentionedMemberId).toBe(ID_A);
 
+    // Audit rides the SAME batch (never skipped on a partial failure, §6.6).
     expect(
       inserts.some((c) => type(c.values).action === "comment.create"),
     ).toBe(true);
@@ -146,7 +150,8 @@ describe("createComment — writes org_id from ctx, validates mentions, audits",
       [draftRow("brand_1")],
       [{ memberId: ID_A, name: "Jane", email: "j@x.co" }],
     ]);
-    const inserts = captureInserts(insert, [{ id: "comment_1" }]);
+    const inserts = captureInserts(insert);
+    makeBatch(batch);
 
     const result = await createComment(adminCtx, { postId: "post_1", body });
 
@@ -162,7 +167,8 @@ describe("createComment — writes org_id from ctx, validates mentions, audits",
   it("404s (before any write) when a creator comments on an unassigned brand", async () => {
     // getDraftById returns a post on brand_2; the creator is scoped to brand_1.
     queueSelects([[draftRow("brand_2")]]);
-    const inserts = captureInserts(insert, [{ id: "comment_1" }]);
+    const inserts = captureInserts(insert);
+    makeBatch(batch);
     await expect(
       createComment(creatorCtx, { postId: "post_1", body: "hi" }),
     ).rejects.toBeInstanceOf(NotFoundError);

@@ -48,9 +48,21 @@ export function parseMentionIds(body: string): string[] {
   return [...new Set(parseMentions(body).map((t) => t.memberId))];
 }
 
-/** Build a mention marker for insertion into a comment body. */
+/**
+ * Build a mention marker for insertion into a comment body. The display name is
+ * sanitized of the marker's own delimiters (`[]()` + newlines) so a member whose
+ * name contains one (user-controlled `user.name`) can't produce a marker the
+ * pattern fails to re-match (which would drop the mention + render a broken
+ * marker). Collapsed to spaces; the memberId is authoritative regardless.
+ */
 export function mentionMarker(name: string, memberId: string): string {
-  return `@[${name}](${memberId})`;
+  const safeName = name.replace(/[[\]()\r\n]+/g, " ").trim() || "member";
+  return `@[${safeName}](${memberId})`;
+}
+
+/** Escape a string for literal use inside a RegExp. */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**
@@ -67,7 +79,11 @@ export function buildBodyFromDisplay(
   let body = text;
   const sorted = [...mentions].sort((a, b) => b.name.length - a.name.length);
   for (const m of sorted) {
-    body = body.split(`@${m.name}`).join(mentionMarker(m.name, m.memberId));
+    // `(?!\w)` word-boundary so "@Jane" doesn't corrupt a hand-typed "@Janet";
+    // a produced marker (`@[Name]…`) can't re-match a later, shorter `@Name`
+    // pass (the bracket differs), so replacement stays stable.
+    const pattern = new RegExp(`${escapeRegExp(`@${m.name}`)}(?!\\w)`, "g");
+    body = body.replace(pattern, mentionMarker(m.name, m.memberId));
   }
   return body;
 }

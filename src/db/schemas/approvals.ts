@@ -9,6 +9,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -149,6 +150,10 @@ export const comments = pgTable(
       columns: [t.orgId, t.postId],
       foreignColumns: [posts.orgId, posts.id],
     }).onDelete("cascade"),
+    // Composite unique so child rows (comment_mentions) can carry a composite FK
+    // against (org_id, id) — the belt-and-suspenders tenancy pattern posts uses
+    // (§6.4). Without this the comment_mentions FK has no unique to reference.
+    unique("comments_org_id_id_key").on(t.orgId, t.id),
     index("comments_org_post_idx").on(t.orgId, t.postId),
     index("comments_post_created_idx").on(t.postId, t.createdAt),
   ],

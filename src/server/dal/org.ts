@@ -80,9 +80,11 @@ export type NotifyRecipient = {
 
 /**
  * The org's internal reviewers (owner/admin/approver — roleGrantsReview),
- * mapped to notify recipients. E3 emails these on submit. Reviewers see every
- * brand (§7), so this is org-wide, not brand-scoped. Reuses listOrgMembers
- * (≤10 seats, one read). Usable from a system ctx (the notification job).
+ * mapped to notify recipients. A building block: the notification job narrows
+ * these to the ones ASSIGNED to a post's brand (brand_members) before emailing,
+ * mirroring the E2 approvals surface (reviewer visibility is brand-scoped for
+ * every role). Reuses listOrgMembers (≤10 seats, one read). Usable from a
+ * system ctx (the notification job).
  */
 export async function listOrgReviewers(
   ctx: AuthCtx,
