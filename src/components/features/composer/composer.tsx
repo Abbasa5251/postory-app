@@ -105,15 +105,20 @@ export function Composer({
   );
   const [postId, setPostId] = useState<string | undefined>(initial?.postId);
 
+  // Remember a freshly-created draft's id: reflect it in the URL so a refresh
+  // keeps editing this draft (no server round-trip that would reset the
+  // in-progress form). Shared by save + submit so a submit-after-create failure
+  // still leaves the new draft addressable.
+  function rememberNewDraft(id: string) {
+    if (postId) return;
+    setPostId(id);
+    window.history.replaceState(null, "", `?post=${id}`);
+  }
+
   const { pending, message, fieldErrors, run } = useActionForm(saveDraft, {
     onSuccess: (data: { id: string }) => {
       toast.success("Draft saved.");
-      if (!postId) {
-        setPostId(data.id);
-        // Reflect the new id in the URL so a refresh keeps editing this draft,
-        // without a server round-trip that would reset the in-progress form.
-        window.history.replaceState(null, "", `?post=${data.id}`);
-      }
+      rememberNewDraft(data.id);
     },
   });
 
@@ -203,11 +208,15 @@ export function Composer({
   const overSomePlatform = targets.some(
     (p) => (captions[p] ?? "").length > PLATFORM_CONFIG[p].charLimit,
   );
-  const canSave = targets.length > 0 && !overSomePlatform && !pending;
+  // `submitting` gates Save too: submit() saves via the raw action (not `run`,
+  // so `pending` stays false), and an enabled Save mid-submit could fire a
+  // second create → a duplicate draft.
+  const canSave =
+    targets.length > 0 && !overSomePlatform && !pending && !submitting;
   // Submitting requires a valid, complete post (every target needs a caption —
   // the server re-checks via postContentSchema/the state machine regardless).
   const missingCaption = targets.some((p) => (captions[p] ?? "").trim() === "");
-  const canSubmit = canSave && !missingCaption && !submitting;
+  const canSubmit = canSave && !missingCaption;
 
   function buildContent(): PostContent {
     return {
@@ -251,7 +260,9 @@ export function Composer({
         return;
       }
       const id = saved.data.id;
-      setPostId(id);
+      // Make the new draft addressable BEFORE submitting, so a submit failure
+      // still leaves it recoverable on refresh (?post=id).
+      rememberNewDraft(id);
       const submitted = await submitPost({ postId: id });
       if (!submitted.ok) {
         toast.error(submitted.error.message);
