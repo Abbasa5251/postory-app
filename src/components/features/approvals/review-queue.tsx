@@ -22,7 +22,24 @@ import { approvePost, requestChanges } from "@/server/actions/posts";
 import type { MediaAssetView } from "../composer/media-types";
 import { PostPreview, type PreviewIdentity } from "../composer/post-preview";
 
-type Identities = Record<Platform, PreviewIdentity>;
+/** Per-brand → per-platform identity (the queue spans brands — E2). */
+type Identities = Record<string, Record<Platform, PreviewIdentity>>;
+
+/** Identity for a post's platform, with a safe fallback for a brand/platform gap. */
+function identityFor(
+  identities: Identities,
+  brandId: string,
+  platform: Platform,
+  fallbackName: string,
+): PreviewIdentity {
+  return (
+    identities[brandId]?.[platform] ?? {
+      handle: null,
+      avatarUrl: null,
+      name: fallbackName,
+    }
+  );
+}
 
 /** First target's caption (trimmed) — the collapsed list-row title. */
 function rowCaption(post: ReviewPost): string {
@@ -52,24 +69,23 @@ const SUBMITTED_FMT = new Intl.DateTimeFormat("en-US", {
 });
 
 /**
- * E1 reviewer queue (minimal — E2 owns the cross-brand "All workspaces" +
- * platform filters shown in the mockup). Cards match the postory-design
- * Approvals mockup: striped media thumbnail, platform dots + workspace + a
- * "Pending approval" pill, a 2-line caption, a submitter meta line, and inline
- * Approve / Request-changes. Clicking the thumbnail or caption opens a dialog
- * with a feed-accurate preview per platform (tabs) + the full caption, so a
- * reviewer sees what will ship. CLIENT_REVIEW rows are read-only ("waiting on
- * client" — E4). The mutating actions re-enforce post:approve + the state machine.
+ * Cross-brand reviewer queue (E2 — the "needs my approval" queue behind the
+ * top-level /approvals route, with the workspace + platform filters in the
+ * header). Cards match the postory-design Approvals mockup: striped media
+ * thumbnail, platform dots + the post's workspace + a "Pending approval" pill, a
+ * 2-line caption, a submitter meta line, and inline Approve / Request-changes.
+ * Clicking the thumbnail or caption opens a dialog with a feed-accurate preview
+ * per platform (tabs) + the full caption, so a reviewer sees what will ship.
+ * CLIENT_REVIEW rows are read-only ("waiting on client" — E4). The mutating
+ * actions re-enforce post:approve + the state machine.
  */
 export function ReviewQueue({
   posts,
-  brandName,
   mediaAssets,
   identities,
   canApprove,
 }: {
   posts: ReviewPost[];
-  brandName: string;
   mediaAssets: MediaAssetView[];
   identities: Identities;
   canApprove: boolean;
@@ -80,7 +96,6 @@ export function ReviewQueue({
         <ReviewRow
           key={post.id}
           post={post}
-          brandName={brandName}
           mediaAssets={mediaAssets}
           identities={identities}
           canApprove={canApprove}
@@ -92,13 +107,11 @@ export function ReviewQueue({
 
 function ReviewRow({
   post,
-  brandName,
   mediaAssets,
   identities,
   canApprove,
 }: {
   post: ReviewPost;
-  brandName: string;
   mediaAssets: MediaAssetView[];
   identities: Identities;
   canApprove: boolean;
@@ -143,7 +156,9 @@ function ReviewRow({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <PlatformDots targets={targets} />
-          <span className="text-xs text-muted-foreground">{brandName}</span>
+          <span className="text-xs text-muted-foreground">
+            {post.brandName}
+          </span>
           <StatusPill status={post.status} />
         </div>
         <button
@@ -324,7 +339,12 @@ function ReviewModalBody({
                   platform={platform}
                   caption={variant?.caption ?? ""}
                   assets={assets}
-                  identity={identities[platform]}
+                  identity={identityFor(
+                    identities,
+                    post.brandId,
+                    platform,
+                    post.brandName,
+                  )}
                 />
               </div>
               <div className="mt-4 space-y-1">

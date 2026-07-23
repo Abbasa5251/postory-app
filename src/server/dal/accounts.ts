@@ -1,11 +1,11 @@
 import "server-only";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/db";
 import { socialAccounts, zernioProfiles } from "@/db/schemas/brands";
 import { NotFoundError } from "@/server/domain/errors";
 import type { AccountStatus } from "@/server/services/zernio/schemas";
 import { buildAuditInsert, recordAuditEvent } from "./audit";
-import { assertBrandAccess, orgScope } from "./scope";
+import { assertBrandAccess, brandScope, orgScope } from "./scope";
 import type { AuthCtx } from "./types";
 
 /**
@@ -30,6 +30,31 @@ export async function listSocialAccounts(ctx: AuthCtx, brandId: string) {
       and(orgScope(ctx, socialAccounts), eq(socialAccounts.brandId, brandId)),
     )
     .orderBy(socialAccounts.platform);
+}
+
+/**
+ * Connected accounts across several brands in one query (E2 cross-brand review
+ * queue — the queue spans multiple brands, so per-brand `listSocialAccounts`
+ * would be N+1). Org-scoped, plus `brandScope` as defense-in-depth so a creator
+ * can never read another brand's accounts even if a stale id is passed. Ordered
+ * by brand then platform so callers can group by brand. Empty input → no query.
+ */
+export async function listSocialAccountsForBrands(
+  ctx: AuthCtx,
+  brandIds: string[],
+) {
+  if (brandIds.length === 0) return [];
+  return db
+    .select()
+    .from(socialAccounts)
+    .where(
+      and(
+        orgScope(ctx, socialAccounts),
+        inArray(socialAccounts.brandId, brandIds),
+        brandScope(ctx, socialAccounts.brandId),
+      ),
+    )
+    .orderBy(socialAccounts.brandId, socialAccounts.platform);
 }
 
 /**

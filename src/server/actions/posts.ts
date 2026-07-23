@@ -19,13 +19,14 @@ import {
 import { withAction } from "./with-action";
 
 /**
- * Revalidate the brand surfaces a post transition can affect: the composer
- * (edit lock changes), the posts list, and the approvals queue.
+ * Revalidate the surfaces a post transition can affect: the brand composer
+ * (edit lock changes), the brand posts list, and the cross-brand review queue
+ * (E2 — a top-level, non-brand-scoped route).
  */
 function revalidatePostSurfaces(brandId: string): void {
   revalidatePath(`/brands/${brandId}/composer`);
   revalidatePath(`/brands/${brandId}/posts`);
-  revalidatePath(`/brands/${brandId}/approvals`);
+  revalidatePath("/approvals");
 }
 
 /**
