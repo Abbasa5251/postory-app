@@ -34,6 +34,10 @@ vi.mock("@/server/dal/accounts", () => ({
   listSocialAccountsForBrands: vi.fn(async () => []),
 }));
 vi.mock("@/server/dal/media", () => ({ getMediaByIds: vi.fn(async () => []) }));
+vi.mock("@/server/dal/comments", () => ({
+  listCommentsForPosts: vi.fn(async () => new Map()),
+}));
+vi.mock("@/server/dal/org", () => ({ listOrgMembers: vi.fn(async () => []) }));
 vi.mock("@/server/media-views", () => ({ toMediaAssetView: vi.fn() }));
 vi.mock("@/components/features/approvals/search-params", () => ({
   loadApprovalFilters: vi.fn(async () => ({ workspace: null, platform: null })),
