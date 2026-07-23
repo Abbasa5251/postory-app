@@ -18,9 +18,22 @@ import {
  * probing is a deferred D5 hardening — D-C4-3).
  */
 
+/**
+ * Canonical media_assets vocabularies — mirror the DB CHECK constraints on
+ * kind / source / moderation_status (single source of truth, §4). The zod
+ * schema below, the D4 filter parsers (`features/media/search-params.ts`), and
+ * any facet typing all derive from these rather than re-listing the literals.
+ */
+export const MEDIA_KINDS = ["image", "video"] as const;
+export const MEDIA_SOURCES = ["upload", "generated"] as const;
+export const MODERATION_STATUSES = ["pending", "passed", "blocked"] as const;
+
+export type MediaKind = (typeof MEDIA_KINDS)[number];
+export type MediaSource = (typeof MEDIA_SOURCES)[number];
+export type ModerationStatus = (typeof MODERATION_STATUSES)[number];
+
 /** Media kind — mirrors the `media_assets.kind` CHECK vocabulary. */
-export const mediaKindSchema = z.enum(["image", "video"]);
-export type MediaKind = z.infer<typeof mediaKindSchema>;
+export const mediaKindSchema = z.enum(MEDIA_KINDS);
 
 /** Request a presigned upload URL. `brandId` is re-checked server-side. */
 export const createUploadSchema = z
@@ -69,3 +82,18 @@ export const recordUploadSchema = z.object({
   durationSeconds: z.number().int().nonnegative().optional(),
 });
 export type RecordUploadInput = z.infer<typeof recordUploadSchema>;
+
+/**
+ * Asset-library facet filters (D4) live in the URL and are owned by **nuqs** —
+ * the parser map + server loader are in
+ * `components/features/media/search-params.ts` (shared by the page and the
+ * client filter row), so there is no zod schema for them here. No free-text
+ * search — media_assets has no textual field to match on.
+ */
+
+/** Delete one asset (D4). brandId scopes revalidation; the DAL re-checks it. */
+export const deleteMediaSchema = z.object({
+  brandId: z.uuid("Brand id is required."),
+  mediaId: z.uuid("Media id is required."),
+});
+export type DeleteMediaInput = z.infer<typeof deleteMediaSchema>;

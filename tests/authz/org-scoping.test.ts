@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getActiveOrgName, listOrgMembers } from "@/server/dal/org";
+import {
+  getActiveOrgName,
+  listOrgIdsForSweep,
+  listOrgMembers,
+} from "@/server/dal/org";
 import { memberCtx } from "../helpers/ctx";
 import { makeSelectChain, renderedWhere } from "../helpers/db-mock";
 
@@ -70,5 +74,20 @@ describe("getActiveOrgName — org-scoped read of the active org's name", () => 
     );
 
     expect(name).toBeNull();
+  });
+});
+
+describe("listOrgIdsForSweep — the ONE intentional un-scoped read (D4 sweep)", () => {
+  it("enumerates every org id with no org predicate (system-only, no ctx)", async () => {
+    // Deliberately un-scoped: the cron orphan sweep has no org context and must
+    // list all orgs, then run the ORDINARY org-scoped DAL per org (§6/§13).
+    const chain = makeSelectChain(select, [{ id: "org_1" }, { id: "org_2" }]);
+
+    const ids = await listOrgIdsForSweep();
+
+    expect(select).toHaveBeenCalledOnce();
+    // No where-clause: it is the documented exception, not a scoping bug.
+    expect(chain.where).not.toHaveBeenCalled();
+    expect(ids).toEqual(["org_1", "org_2"]);
   });
 });

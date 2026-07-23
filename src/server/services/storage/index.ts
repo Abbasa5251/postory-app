@@ -209,6 +209,44 @@ export async function putObject(
   }
 }
 
+/**
+ * DELETE an object (D4 — asset-library delete + orphan-cleanup sweep). Idempotent
+ * by design: a 404 is treated as success so re-running the cleanup (or racing a
+ * concurrent delete) never fails — the goal state is "object gone", and it is.
+ * Bounded by a deadline like the other primitives. The key is always one we
+ * minted (`buildMediaKey`), never client input — SSRF-safe (§7).
+ */
+export async function deleteObject(key: string): Promise<void> {
+  const { aws, endpoint, bucket, region } = getStorageClient();
+  const url = `${endpoint}/${bucket}/${encodeKey(key)}`;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), HEAD_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await aws.fetch(url, {
+      method: "DELETE",
+      signal: controller.signal,
+      aws: { service: "s3", region },
+    });
+  } catch (error) {
+    throw new StorageError(
+      controller.signal.aborted
+        ? `DELETE ${key} timed out after ${HEAD_TIMEOUT_MS}ms`
+        : `DELETE ${key} request failed`,
+      { cause: error },
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+
+  // S3/MinIO/R2 return 204 on delete and 404 when the object is already gone;
+  // both mean "no longer present" — only a real error status throws.
+  if (!res.ok && res.status !== 404) {
+    throw new StorageError(`DELETE ${key} failed with status ${res.status}`);
+  }
+}
+
 /** Public (CDN in prod, MinIO in dev) URL for serving a stored object. */
 export function publicUrl(key: string): string {
   return `${getStorageClient().publicBaseUrl}/${encodeKey(key)}`;

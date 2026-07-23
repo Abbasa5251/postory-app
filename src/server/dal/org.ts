@@ -64,3 +64,19 @@ export async function listOrgMembers(ctx: AuthCtx): Promise<OrgMember[]> {
     .where(eq(member.organizationId, ctx.orgId))
     .orderBy(user.name);
 }
+
+/**
+ * Every organization id — the ONE deliberately un-scoped, system-only DAL read
+ * (D4 orphan-cleanup sweep, AGENTS.md §10). Takes NO AuthCtx and applies NO
+ * org filter by design: a weekly cross-tenant sweep must enumerate all orgs so
+ * it can then build a per-org `getSystemCtx(orgId, …)` and run the ordinary
+ * org-scoped media DAL against each (staying inside the tenancy model — §6).
+ *
+ * This is the only place org enumeration is allowed; it exposes nothing but
+ * ids and must never be reachable from a request/action path (§13 hotspot —
+ * flagged for review). Any tenant DATA still flows through the org-scoped DAL.
+ */
+export async function listOrgIdsForSweep(): Promise<string[]> {
+  const rows = await db.select({ id: organization.id }).from(organization);
+  return rows.map((r) => r.id);
+}

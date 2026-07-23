@@ -12,7 +12,7 @@ import {
   PLATFORM_CONFIG,
   type Platform,
 } from "@/lib/platforms/config";
-import { createUploadUrl, recordUpload } from "@/server/actions/media";
+import { uploadFile } from "@/components/features/media/upload";
 import { MediaLibrarySheet } from "./media-library-sheet";
 import type { MediaAssetView } from "./media-types";
 
@@ -34,74 +34,6 @@ type MediaCardProps = {
 
 /** A single in-flight upload (transient — cleared on completion/failure). */
 type Upload = { id: string; name: string; progress: number };
-
-/** Client-probe an image/video for its natural dimensions (+ video duration). */
-async function probeDimensions(
-  file: File,
-  kind: "image" | "video",
-): Promise<{ width?: number; height?: number; durationSeconds?: number }> {
-  const url = URL.createObjectURL(file);
-  try {
-    if (kind === "image") {
-      const img = new Image();
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = () => reject(new Error("probe failed"));
-        img.src = url;
-      });
-      return { width: img.naturalWidth, height: img.naturalHeight };
-    }
-    const video = document.createElement("video");
-    video.preload = "metadata";
-    await new Promise<void>((resolve, reject) => {
-      video.onloadedmetadata = () => resolve();
-      video.onerror = () => reject(new Error("probe failed"));
-      video.src = url;
-    });
-    return {
-      width: video.videoWidth,
-      height: video.videoHeight,
-      durationSeconds: Math.round(video.duration),
-    };
-  } catch {
-    // Probe is advisory — a failure just means no dims (server still gates
-    // mime/size; publish gates aspect/duration). Don't block the upload.
-    return {};
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
-
-/** How long a single PUT may stall before we give up (ms). Generous for large
- * video, but finite so a dead connection frees the upload slot. */
-const UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
-
-/** PUT the file straight to R2/MinIO via the presigned URL, reporting progress. */
-function putToStore(
-  url: string,
-  file: File,
-  onProgress: (pct: number) => void,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("PUT", url);
-    xhr.setRequestHeader("Content-Type", file.type);
-    // Finite timeout: without it a stalled PUT leaves the upload spinning
-    // forever (the row is never recorded and the slot never frees).
-    xhr.timeout = UPLOAD_TIMEOUT_MS;
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable)
-        onProgress(Math.round((e.loaded / e.total) * 100));
-    };
-    xhr.onload = () =>
-      xhr.status >= 200 && xhr.status < 300
-        ? resolve()
-        : reject(new Error(`Upload failed (${xhr.status}).`));
-    xhr.ontimeout = () => reject(new Error("Upload timed out."));
-    xhr.onerror = () => reject(new Error("Upload failed."));
-    xhr.send(file);
-  });
-}
 
 export function MediaCard({
   brandId,
@@ -148,36 +80,12 @@ export function MediaCard({
         { id: uploadId, name: file.name, progress: 0 },
       ]);
       try {
-        const dims = await probeDimensions(file, kind);
-        const created = await createUploadUrl({
-          brandId,
-          kind,
-          mimeType: file.type,
-          sizeBytes: file.size,
-          ...dims,
-        });
-        if (!created.ok) {
-          throw new Error(created.error.message || "Could not start upload.");
-        }
-        await putToStore(created.data.url, file, (pct) =>
+        const asset = await uploadFile(brandId, file, (pct) =>
           setUploads((prev) =>
             prev.map((u) => (u.id === uploadId ? { ...u, progress: pct } : u)),
           ),
         );
-        const recorded = await recordUpload({
-          brandId,
-          r2Key: created.data.r2Key,
-          kind,
-          width: dims.width,
-          height: dims.height,
-          durationSeconds: dims.durationSeconds,
-        });
-        if (!recorded.ok) {
-          throw new Error(recorded.error.message || "Could not save upload.");
-        }
-        // The action returns `kind` as a string column; narrow to the view's
-        // union (it can only ever be the kind we uploaded).
-        onAttach(recorded.data as MediaAssetView, platforms);
+        onAttach(asset, platforms);
       } catch (error) {
         setErrors((prev) => [
           ...prev,
