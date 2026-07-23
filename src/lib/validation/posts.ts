@@ -95,6 +95,35 @@ export const saveDraftSchema = z.object({
 export type SaveDraftInput = z.infer<typeof saveDraftSchema>;
 
 /**
+ * Post lifecycle transition inputs (E1, §5). Each carries only the post id
+ * (re-scoped server-side against the caller's org + brand access in the DAL —
+ * the client is hostile, §7); the current status + legal edge are derived
+ * server-side from the persisted post, never trusted from the client.
+ */
+export const submitPostSchema = z.object({
+  postId: z.uuid("Post id is required."),
+});
+export type SubmitPostInput = z.infer<typeof submitPostSchema>;
+
+/** Internal approval; an optional note travels onto the approvals record. */
+export const approvePostSchema = z.object({
+  postId: z.uuid("Post id is required."),
+  note: z.string().trim().max(2000).optional(),
+});
+export type ApprovePostInput = z.infer<typeof approvePostSchema>;
+
+/** Internal request-changes; the note is required — it's the feedback. */
+export const requestChangesSchema = z.object({
+  postId: z.uuid("Post id is required."),
+  note: z
+    .string()
+    .trim()
+    .min(1, "Add a note so the creator knows what to change.")
+    .max(2000),
+});
+export type RequestChangesInput = z.infer<typeof requestChangesSchema>;
+
+/**
  * UTM tracked-link builder input (C6). Client-only — the composer's link
  * helper parses the form through this, then `buildUtmUrl` composes the URL
  * that gets inserted into the caption as plain text (no persistence of its

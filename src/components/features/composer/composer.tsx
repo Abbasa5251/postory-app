@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/features/shell/page-header";
@@ -13,7 +14,7 @@ import { resolveMediaAssets } from "@/lib/platforms/preview";
 import type { PostContent } from "@/lib/validation/posts";
 import { insertText } from "@/lib/caption-helpers";
 import { cn } from "@/lib/utils";
-import { saveDraft } from "@/server/actions/posts";
+import { saveDraft, submitPost } from "@/server/actions/posts";
 import { AdaptCard } from "./adapt-card";
 import { AiCopyCard } from "./ai-copy-card";
 import { AiImageCard } from "./ai-image-card";
@@ -48,6 +49,11 @@ type ComposerProps = {
   libraryAssets: MediaAssetView[];
   /** Brand logo, the C5 preview avatar fallback when a platform has no account avatar. */
   brandLogoUrl?: string | null;
+  /**
+   * The latest internal reviewer note when editing a CHANGES_REQUESTED post
+   * (E1) — shown as a banner so the creator sees what to fix before resubmitting.
+   */
+  changeRequest?: { note: string | null; by: string | null } | null;
 };
 
 function captionsFromContent(content: PostContent | undefined) {
@@ -76,7 +82,10 @@ export function Composer({
   hasVoiceProfile,
   libraryAssets,
   brandLogoUrl,
+  changeRequest,
 }: ComposerProps) {
+  const router = useRouter();
+  const [submitting, setSubmitting] = useState(false);
   const [targets, setTargets] = useState<Platform[]>(
     initial?.content.targets ?? [],
   );
@@ -96,15 +105,20 @@ export function Composer({
   );
   const [postId, setPostId] = useState<string | undefined>(initial?.postId);
 
+  // Remember a freshly-created draft's id: reflect it in the URL so a refresh
+  // keeps editing this draft (no server round-trip that would reset the
+  // in-progress form). Shared by save + submit so a submit-after-create failure
+  // still leaves the new draft addressable.
+  function rememberNewDraft(id: string) {
+    if (postId) return;
+    setPostId(id);
+    window.history.replaceState(null, "", `?post=${id}`);
+  }
+
   const { pending, message, fieldErrors, run } = useActionForm(saveDraft, {
     onSuccess: (data: { id: string }) => {
       toast.success("Draft saved.");
-      if (!postId) {
-        setPostId(data.id);
-        // Reflect the new id in the URL so a refresh keeps editing this draft,
-        // without a server round-trip that would reset the in-progress form.
-        window.history.replaceState(null, "", `?post=${data.id}`);
-      }
+      rememberNewDraft(data.id);
     },
   });
 
@@ -194,10 +208,18 @@ export function Composer({
   const overSomePlatform = targets.some(
     (p) => (captions[p] ?? "").length > PLATFORM_CONFIG[p].charLimit,
   );
-  const canSave = targets.length > 0 && !overSomePlatform && !pending;
+  // `submitting` gates Save too: submit() saves via the raw action (not `run`,
+  // so `pending` stays false), and an enabled Save mid-submit could fire a
+  // second create → a duplicate draft.
+  const canSave =
+    targets.length > 0 && !overSomePlatform && !pending && !submitting;
+  // Submitting requires a valid, complete post (every target needs a caption —
+  // the server re-checks via postContentSchema/the state machine regardless).
+  const missingCaption = targets.some((p) => (captions[p] ?? "").trim() === "");
+  const canSubmit = canSave && !missingCaption;
 
-  function save() {
-    const content: PostContent = {
+  function buildContent(): PostContent {
+    return {
       targets,
       variants: Object.fromEntries(
         targets.map((p) => {
@@ -212,7 +234,47 @@ export function Composer({
         }),
       ),
     };
-    void run({ brandId, postId, content });
+  }
+
+  function save() {
+    void run({ brandId, postId, content: buildContent() });
+  }
+
+  /**
+   * Submit for internal review (E1). Persists the current content first (a
+   * CHANGES_REQUESTED post reverts to DRAFT on this save, §5), then runs the
+   * DRAFT → IN_REVIEW transition and routes to the approvals queue. Two
+   * sequential actions — the composer only edits DRAFT/CHANGES_REQUESTED, so
+   * the save always lands on a submittable DRAFT.
+   */
+  async function submit() {
+    setSubmitting(true);
+    try {
+      const saved = await saveDraft({
+        brandId,
+        postId,
+        content: buildContent(),
+      });
+      if (!saved.ok) {
+        toast.error(saved.error.message);
+        return;
+      }
+      const id = saved.data.id;
+      // Make the new draft addressable BEFORE submitting, so a submit failure
+      // still leaves it recoverable on refresh (?post=id).
+      rememberNewDraft(id);
+      const submitted = await submitPost({ postId: id });
+      if (!submitted.ok) {
+        toast.error(submitted.error.message);
+        return;
+      }
+      toast.success("Submitted for approval.");
+      router.push(`/brands/${brandId}/approvals`);
+    } catch {
+      toast.error("Something went wrong. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   const activePlatformLabel = active ? PLATFORM_CONFIG[active].label : null;
@@ -232,10 +294,15 @@ export function Composer({
             <Button
               type="button"
               variant="outline"
-              disabled
-              title="Submitting for approval lands with Epic E."
+              onClick={submit}
+              disabled={!canSubmit}
+              title={
+                missingCaption
+                  ? "Every selected platform needs a caption before submitting."
+                  : undefined
+              }
             >
-              Submit for approval
+              {submitting ? "Submitting…" : "Submit for approval"}
             </Button>
             <Button type="button" onClick={save} disabled={!canSave}>
               {pending ? "Saving…" : "Save draft"}
@@ -243,6 +310,19 @@ export function Composer({
           </>
         }
       />
+
+      {changeRequest && (
+        <div
+          role="status"
+          className="mb-4 rounded-lg bg-status-pending p-3 text-sm text-status-pending-foreground"
+        >
+          <p className="font-medium">
+            Changes requested
+            {changeRequest.by ? ` by ${changeRequest.by}` : ""}
+          </p>
+          {changeRequest.note && <p className="mt-1">{changeRequest.note}</p>}
+        </div>
+      )}
 
       {(message || fieldErrors) && (
         <div role="alert" className="mb-4 space-y-1 text-sm text-destructive">

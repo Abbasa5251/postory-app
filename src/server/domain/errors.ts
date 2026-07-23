@@ -79,6 +79,25 @@ export class ModerationError extends DomainError {
 }
 
 /**
+ * A post-lifecycle transition is not legal from the post's current state (E1,
+ * §5) — e.g. approving a DRAFT, submitting a PUBLISHED post. Safe to reveal:
+ * it's the caller's own post in a state they can see, the action is just not
+ * available now. `withAction` maps the TRANSITION code without reporting to
+ * Sentry (an expected failure, not a bug). The single source of transition
+ * legality is `src/server/domain/post-state.ts`, which throws this.
+ */
+export class TransitionError extends DomainError {
+  readonly code = "TRANSITION";
+
+  constructor(
+    message = "This post can't change to that state from its current one.",
+  ) {
+    super(message);
+    this.name = "TransitionError";
+  }
+}
+
+/**
  * An uploaded object failed the server-authoritative media gate (C4, D-C4-3):
  * the actual (HEAD-read) MIME type or size is unsupported, or the object is
  * missing (the client never completed the PUT). Safe to reveal — it's the

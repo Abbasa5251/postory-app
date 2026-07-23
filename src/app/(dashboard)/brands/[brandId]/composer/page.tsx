@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PLATFORM_LIST } from "@/lib/platforms/config";
 import { emptyPostContent } from "@/lib/validation/posts";
+import { listApprovalsForPost } from "@/server/dal/approvals";
 import { listSocialAccounts } from "@/server/dal/accounts";
 import { listMediaForBrand } from "@/server/dal/media";
 import { getDraftById } from "@/server/dal/posts";
@@ -90,8 +91,11 @@ export default async function ComposerPage({
   }));
 
   // Edit mode: hydrate an existing DRAFT. Cross-org / unassigned / nonexistent
-  // all 404 (getDraftById); C1 only edits drafts, so a non-DRAFT post 404s too.
+  // all 404 (getDraftById). E1: the composer edits DRAFT + CHANGES_REQUESTED
+  // (editing a rejected post reverts it to DRAFT on save, §5); other statuses
+  // are locked here.
   let initial;
+  let changeRequest: { note: string | null; by: string | null } | null = null;
   if (postId) {
     // A malformed id would reach getDraftById's uuid column and throw a DB
     // error, not a NotFoundError — treat it as a not-found (404) before the query.
@@ -103,12 +107,21 @@ export default async function ComposerPage({
       if (error instanceof NotFoundError) notFound();
       throw error;
     }
-    // C1 only edits drafts; a non-DRAFT post is not composable here.
-    if (draft.status !== "DRAFT") notFound();
+    if (draft.status !== "DRAFT" && draft.status !== "CHANGES_REQUESTED") {
+      notFound();
+    }
     initial = {
       postId: draft.id,
       content: draft.content ?? emptyPostContent(),
     };
+    // Surface the latest changes-requested note so the creator sees what to fix.
+    if (draft.status === "CHANGES_REQUESTED") {
+      const history = await listApprovalsForPost(ctx, draft.id);
+      const latest = history.find((a) => a.decision === "changes_requested");
+      if (latest) {
+        changeRequest = { note: latest.note, by: latest.decidedByName };
+      }
+    }
   }
 
   return (
@@ -123,6 +136,7 @@ export default async function ComposerPage({
       hasVoiceProfile={Boolean(brand.voiceProfile)}
       libraryAssets={libraryAssets}
       brandLogoUrl={brand.logoUrl}
+      changeRequest={changeRequest}
     />
   );
 }
