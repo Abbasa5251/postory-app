@@ -7,13 +7,15 @@ import {
   refundCredits,
   reserveCredits,
 } from "@/server/dal/credits";
+import { recordAuditEvent } from "@/server/dal/audit";
 import { completeJob, getById, startJob } from "@/server/dal/generation-jobs";
 import {
   assertSufficientBalance,
   refundOnSettle,
 } from "@/server/domain/credits";
 import { buildAdaptPrompt } from "@/server/domain/copy-prompt";
-import { streamCaption } from "@/server/services/openrouter";
+import { verdictFromJudge } from "@/server/domain/moderation";
+import { moderateText, streamCaption } from "@/server/services/openrouter";
 import { inngest } from "../client";
 import { copyAdaptRequestedEvent } from "../events";
 
@@ -106,8 +108,33 @@ export const adaptCopyJob = inngest.createFunction(
             caption = (await text).trim();
             providerId = await pid;
           } catch {
-            return { platform, ok: false as const };
+            return { platform, outcome: "failed" as const };
           }
+
+          // D5 output moderation (fail-closed → blocked). A blocked caption is
+          // NOT published and never fills its tab, but it WAS generated + billed
+          // → it's charged, not refunded (unlike a generation failure). Block +
+          // log (§ audit metadata never carries the flagged text).
+          let blocked = false;
+          try {
+            const raw = await moderateText({
+              modelId: d.moderationModelId,
+              text: caption,
+            });
+            blocked = verdictFromJudge(raw).status === "blocked";
+          } catch {
+            blocked = true;
+          }
+          if (blocked) {
+            await recordAuditEvent(ctx, {
+              action: "moderation.block",
+              entityType: "generation_job",
+              entityId: d.jobId,
+              metadata: { contentType: "copy_adapt", platform },
+            });
+            return { platform, outcome: "blocked" as const, providerId };
+          }
+
           // The caption is now captured in this step's DURABLE result (returned
           // below) and re-broadcast in the `done` payload, so realtime is only
           // the fast path. The live publish is therefore BEST-EFFORT: a delivery
@@ -121,47 +148,73 @@ export const adaptCopyJob = inngest.createFunction(
           } catch {
             // Swallow — best-effort live delivery; the caption is durable above.
           }
-          return { platform, ok: true as const, caption, providerId };
+          return {
+            platform,
+            outcome: "passed" as const,
+            caption,
+            providerId,
+          };
         }),
       ),
     );
 
-    const succeeded = results.filter((r) => r.ok);
-    const failed = results.filter((r) => !r.ok).map((r) => r.platform);
-    // The full set of produced captions — sent in `done` so the client can
-    // apply any it missed when individual `adapted` messages were dropped.
+    // Everything that generated (passed OR blocked) was billed by OpenRouter →
+    // charged; only genuine generation failures are refunded (§8, founder call).
+    const generated = results.filter((r) => r.outcome !== "failed");
+    const failed = results
+      .filter((r) => r.outcome === "failed")
+      .map((r) => r.platform);
+    const blocked = results
+      .filter((r) => r.outcome === "blocked")
+      .map((r) => r.platform);
+    // Only PASSED captions are applied to tabs / re-broadcast in `done`.
     const captions = results.flatMap((r) =>
-      r.ok ? [{ platform: r.platform, caption: r.caption }] : [],
+      r.outcome === "passed"
+        ? [{ platform: r.platform, caption: r.caption }]
+        : [],
     );
-    // One OpenRouter generation per platform → record the set of provider ids
-    // (joined) for billing cross-reference, like the image job.
+    // One OpenRouter generation per generated platform → record the set of
+    // provider ids (joined) for billing cross-reference, like the image job.
     const providerIds = results.flatMap((r) =>
-      r.ok && r.providerId ? [r.providerId] : [],
+      r.outcome !== "failed" && r.providerId ? [r.providerId] : [],
     );
 
-    // Charge only the platforms that succeeded; refund the rest.
+    // Charge every generated platform (passed + blocked); refund only failures.
     await step.run("settle", async () => {
-      const used = succeeded.length * d.creditsPerPlatform;
+      const used = generated.length * d.creditsPerPlatform;
       const refund = refundOnSettle(total, used);
       if (refund > 0)
         await refundCredits(ctx, { jobId: d.jobId, credits: refund });
       await completeJob(ctx, d.jobId, {
-        status: succeeded.length > 0 ? "succeeded" : "failed",
+        status: generated.length > 0 ? "succeeded" : "failed",
         creditsSettled: used,
         providerGenerationId: providerIds.length
           ? providerIds.join(",")
           : undefined,
         error:
-          failed.length > 0
-            ? `adaptation failed for: ${failed.join(", ")}`
-            : undefined,
+          [
+            failed.length > 0
+              ? `adaptation failed for: ${failed.join(", ")}`
+              : null,
+            blocked.length > 0
+              ? `blocked by moderation: ${blocked.join(", ")}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join("; ") || undefined,
       });
     });
 
     await step.realtime.publish("publish-done", adaptChannel(d.jobId).done, {
       failed,
+      blocked,
       captions,
     });
-    return { jobId: d.jobId, adapted: succeeded.length, failed: failed.length };
+    return {
+      jobId: d.jobId,
+      adapted: captions.length,
+      failed: failed.length,
+      blocked: blocked.length,
+    };
   },
 );

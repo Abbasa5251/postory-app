@@ -147,6 +147,9 @@ function AdaptStream({ job, platforms, onAdapted }: AdaptStreamProps) {
   const doneData = doneMsg
     ? (doneMsg.data as {
         failed: Platform[];
+        // D5: platforms whose adapted caption was blocked by moderation —
+        // generated (charged) but withheld, never applied to a tab.
+        blocked: Platform[];
         captions: { platform: Platform; caption: string }[];
       })
     : null;
@@ -184,6 +187,7 @@ function AdaptStream({ job, platforms, onAdapted }: AdaptStreamProps) {
     ...(doneData?.captions.map((c) => c.platform) ?? []),
   ]);
   const failedSet = new Set(failed ?? []);
+  const blockedSet = new Set(doneData?.blocked ?? []);
 
   return (
     <div className="rounded-md border p-3">
@@ -193,28 +197,36 @@ function AdaptStream({ job, platforms, onAdapted }: AdaptStreamProps) {
             <Loader2 className="size-3.5 animate-spin" />
             {connectionStatus === "open" ? "Adapting…" : "Connecting…"}
           </>
-        ) : failedSet.size === 0 ? (
+        ) : failedSet.size === 0 && blockedSet.size === 0 ? (
           "Adapted for every platform."
         ) : (
-          `Couldn't adapt for ${failed.length} platform${failed.length === 1 ? "" : "s"}.`
+          [
+            failedSet.size > 0 ? `couldn't adapt for ${failedSet.size}` : null,
+            blockedSet.size > 0
+              ? `${blockedSet.size} blocked by moderation`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(", ")
         )}
       </div>
       <ul className="flex flex-col gap-1 text-sm">
         {platforms.map((platform) => {
           const done = arrived.has(platform);
           const didFail = failedSet.has(platform);
+          const wasBlocked = blockedSet.has(platform);
           return (
             <li key={platform} className="flex items-center gap-2">
               {done ? (
                 <Check className="size-3.5 text-status-published-foreground" />
-              ) : didFail ? (
+              ) : didFail || wasBlocked ? (
                 <X className="size-3.5 text-destructive" />
               ) : (
                 <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
               )}
               <span
                 className={
-                  didFail
+                  didFail || wasBlocked
                     ? "text-destructive"
                     : done
                       ? ""
@@ -222,6 +234,7 @@ function AdaptStream({ job, platforms, onAdapted }: AdaptStreamProps) {
                 }
               >
                 {PLATFORM_CONFIG[platform].label}
+                {wasBlocked ? " — blocked by moderation" : ""}
               </span>
             </li>
           );

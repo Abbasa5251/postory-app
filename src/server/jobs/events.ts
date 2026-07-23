@@ -45,6 +45,9 @@ export const copyRequestedEvent = eventType("generation/copy.requested", {
     brandId: z.string(),
     credits: z.number().int(),
     modelId: z.string(),
+    // D5: the moderation judge model (credit_rates 'moderation'), resolved in
+    // the action so a missing config fails before anything is generated/charged.
+    moderationModelId: z.string(),
     platform: postPlatformSchema,
     brief: z.string(),
     // Already-normalized brand voice (B2) — a transform-free mirror of
@@ -74,6 +77,8 @@ export const copyAdaptRequestedEvent = eventType(
       // Cost of adapting ONE platform; total reserved = this × platforms.length.
       creditsPerPlatform: z.number().int(),
       modelId: z.string(),
+      // D5 moderation judge model (see copyRequestedEvent).
+      moderationModelId: z.string(),
       platforms: z.array(postPlatformSchema),
       sourceCaption: z.string(),
       voiceProfile: voiceProfileEventSchema,
@@ -99,6 +104,9 @@ export const imageRequestedEvent = eventType("generation/image.requested", {
     // Cost of ONE image; total reserved = this × variantCount.
     creditsPerImage: z.number().int(),
     modelId: z.string(),
+    // D5: the moderation judge model (credit_rates 'moderation'), resolved in
+    // the action so a missing config fails before anything is generated/charged.
+    moderationModelId: z.string(),
     // The user's raw image description; the job assembles the final prompt from
     // it + brand style (domain/image-prompt), mirroring copy/adapt.
     prompt: z.string(),

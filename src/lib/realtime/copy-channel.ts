@@ -16,8 +16,15 @@ export const copyChannel = channel({
   topics: {
     // Incremental text deltas — the live "typing" effect in the UI.
     chunk: { schema: z.object({ text: z.string() }) },
-    // Final parsed caption variants once generation completes.
-    done: { schema: z.object({ variants: z.array(z.string()) }) },
+    // Final parsed caption variants once generation completes — only those that
+    // PASSED D5 moderation. `blocked` is how many were withheld (flagged unsafe)
+    // so the UI can show a notice; the batch is still charged.
+    done: {
+      schema: z.object({
+        variants: z.array(z.string()),
+        blocked: z.number().int(),
+      }),
+    },
     // Terminal failure (reserved credits already refunded).
     error: { schema: z.object({ message: z.string() }) },
   },

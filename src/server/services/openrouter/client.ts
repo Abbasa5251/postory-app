@@ -1,11 +1,13 @@
 import "server-only";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { generateImage, streamText } from "ai";
+import { generateImage, generateObject, streamText } from "ai";
+import * as z from "zod";
 import { env } from "@/lib/env/server";
 import {
   acceptedMimesForKind,
   maxUploadBytesForKind,
 } from "@/lib/platforms/config";
+import { MODERATION_CATEGORIES } from "@/server/domain/moderation";
 import { OpenRouterError } from "./errors";
 
 /**
@@ -163,4 +165,98 @@ export async function generateImages(
     }
     return { bytes: image.uint8Array, mediaType: image.mediaType, providerId };
   });
+}
+
+/**
+ * The judge's structured verdict (D5). `flagged` drives the block decision;
+ * `categories` is informational for the audit log (kept as free strings, not a
+ * hard enum, so an off-taxonomy category from the model can't fail validation
+ * and force a retry — the domain `verdictFromJudge` normalizes them). The
+ * expected category names are surfaced to the model via the system prompt.
+ */
+const moderationVerdictSchema = z.object({
+  flagged: z
+    .boolean()
+    .describe("true if the content violates the safety policy"),
+  categories: z
+    .array(z.string())
+    .describe("the violated safety categories (empty if not flagged)"),
+});
+export type ModerationVerdict = z.infer<typeof moderationVerdictSchema>;
+
+const MODERATION_SYSTEM = `You are a strict content-safety classifier for a brand-marketing tool that publishes to public social platforms. Decide whether the provided content violates the safety policy.
+
+Flag content that contains any of these categories: ${MODERATION_CATEGORIES.join(", ")}. In particular, ALWAYS flag any sexual content involving minors, non-consensual sexual content, graphic gore, hateful or harassing content targeting protected groups, instructions for weapons/mass-casualty attacks, or other clearly unsafe-for-brand material.
+
+Do NOT flag ordinary marketing imagery or copy, including tasteful product/lifestyle shots, mild edginess, or brand slang. When unsure but the content is plausibly brand-safe, do not flag. Return only the structured verdict.`;
+
+export type ModerateImageInput = {
+  /** OpenRouter chat model id with vision, from credit_rates (never hardcoded). */
+  modelId: string;
+  /** Raw generated image bytes (before they are served to anyone). */
+  bytes: Uint8Array;
+  /** IANA media type of the image (e.g. `image/png`). */
+  mediaType: string;
+  /** Aborts the upstream request (job cancellation / timeout). */
+  signal?: AbortSignal;
+};
+
+/**
+ * Classify a generated image for safety (D5) via a vision-capable chat model
+ * (OpenRouter has no dedicated moderation endpoint — verified §3, 2026-07-23).
+ * `maxRetries: 0`: a moderation call is cheap and the JOB owns retry-safety (the
+ * moderate step is memoized separately from generation, so a retry re-moderates
+ * without re-generating/re-billing). The caller (the Inngest job) is fail-closed:
+ * if this throws, it treats the image as blocked, never surfaced un-moderated.
+ */
+export async function moderateImage(
+  input: ModerateImageInput,
+): Promise<ModerationVerdict> {
+  const { object } = await generateObject({
+    model: getProvider().chat(input.modelId),
+    schema: moderationVerdictSchema,
+    schemaName: "moderation_verdict",
+    system: MODERATION_SYSTEM,
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "Classify this generated image." },
+          { type: "image", image: input.bytes, mediaType: input.mediaType },
+        ],
+      },
+    ],
+    maxRetries: 0,
+    abortSignal: input.signal,
+  });
+  return object;
+}
+
+export type ModerateTextInput = {
+  /** OpenRouter chat model id, from credit_rates (never hardcoded). */
+  modelId: string;
+  /** The generated caption/text to classify. */
+  text: string;
+  /** Aborts the upstream request (job cancellation / timeout). */
+  signal?: AbortSignal;
+};
+
+/**
+ * Classify generated caption text for safety (D5). Same judge + policy as
+ * `moderateImage`; text-only input. `maxRetries: 0` and fail-closed at the call
+ * site, as above.
+ */
+export async function moderateText(
+  input: ModerateTextInput,
+): Promise<ModerationVerdict> {
+  const { object } = await generateObject({
+    model: getProvider().chat(input.modelId),
+    schema: moderationVerdictSchema,
+    schemaName: "moderation_verdict",
+    system: MODERATION_SYSTEM,
+    prompt: `Classify this social-media caption:\n\n${input.text}`,
+    maxRetries: 0,
+    abortSignal: input.signal,
+  });
+  return object;
 }

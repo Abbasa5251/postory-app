@@ -8,13 +8,14 @@ import {
   reserveCredits,
 } from "@/server/dal/credits";
 import { completeJob, getById, startJob } from "@/server/dal/generation-jobs";
-import { recordGeneratedAsset } from "@/server/dal/media";
+import { recordGeneratedAsset, setModerationStatus } from "@/server/dal/media";
 import {
   assertSufficientBalance,
   refundOnSettle,
 } from "@/server/domain/credits";
 import { buildImagePrompt } from "@/server/domain/image-prompt";
-import { generateImages } from "@/server/services/openrouter";
+import { verdictFromJudge } from "@/server/domain/moderation";
+import { generateImages, moderateImage } from "@/server/services/openrouter";
 import {
   buildMediaKey,
   extForMediaType,
@@ -55,8 +56,14 @@ type GeneratedAssetView = {
  * (idempotent — a re-run recomputes 0), mirroring C2/C3. The DB-level
  * partial-unique guard on the refund row is deferred to H4 (needs a migration).
  *
- * Moderation is deferred to D5 (founder call): assets land moderationStatus
- * 'pending', un-gated, exactly like C4 uploads.
+ * D5 output moderation: each generated variant is judged (OpenRouter vision
+ * model) inside its variant step and its moderation_status flipped from
+ * 'pending' to 'passed' / 'blocked'. A block does NOT refund — the generation
+ * succeeded and OpenRouter billed us (founder call: charge the editor for an
+ * unsafe generation), so a blocked variant is still counted in `produced` and
+ * charged; it simply streams back flagged and the UI won't let it be attached.
+ * Moderation is FAIL-CLOSED: any judge/DB error marks the variant blocked, never
+ * silently passed. (The prompt gate ran in the action, before any spend.)
  */
 export const generateImageJob = inngest.createFunction(
   {
@@ -153,6 +160,39 @@ export const generateImageJob = inngest.createFunction(
               sourceModel: d.modelId,
               generationJobId: d.jobId,
             });
+
+            // D5 output moderation — judge the bytes we just stored (they're in
+            // scope, so no R2 re-fetch), then flip the row's moderation_status.
+            // FAIL-CLOSED and fully self-contained: a judge/DB error becomes a
+            // 'blocked' verdict and never escapes to the outer catch (which would
+            // wrongly refund a variant OpenRouter already billed us for). The
+            // generation itself already succeeded above, so no retry re-bills.
+            let moderationStatus: "passed" | "blocked" = "blocked";
+            try {
+              const raw = await moderateImage({
+                modelId: d.moderationModelId,
+                bytes: image.bytes,
+                mediaType: image.mediaType,
+              });
+              const verdict = verdictFromJudge(raw);
+              moderationStatus = verdict.status;
+              await setModerationStatus(ctx, recorded.id, verdict.status, {
+                reason: verdict.reason,
+                categories: raw.categories,
+              });
+            } catch {
+              // Fail-closed: record the block if we can; if even that write
+              // fails the row stays 'pending', which the publish gate (F) also
+              // refuses — safe by default.
+              try {
+                await setModerationStatus(ctx, recorded.id, "blocked", {
+                  reason: "moderation error",
+                });
+              } catch {
+                // Swallow — the local `blocked` status still flows to the client.
+              }
+            }
+
             asset = {
               id: recorded.id,
               kind: "image",
@@ -162,7 +202,7 @@ export const generateImageJob = inngest.createFunction(
               width: recorded.width,
               height: recorded.height,
               durationSeconds: recorded.durationSeconds,
-              moderationStatus: recorded.moderationStatus,
+              moderationStatus,
             };
           } catch (err) {
             // Preserve the underlying reason (OpenRouter / storage / DAL) so the
