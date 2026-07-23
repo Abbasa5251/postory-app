@@ -26,6 +26,7 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
@@ -71,10 +72,13 @@ export function AppSidebar({
   brands,
   orgName,
   role,
+  approvalsCount = 0,
 }: {
   brands: BrandSummary[];
   orgName: string;
   role: Role;
+  /** Pending review queue count (E2 badge); 0 hides the badge. */
+  approvalsCount?: number;
 }) {
   const { pathname, activeBrandId, section } = useBrandContext(brands);
 
@@ -136,6 +140,13 @@ export function AppSidebar({
                     <CheckCircle2 />
                     <span>Approvals</span>
                   </SidebarMenuButton>
+                  {approvalsCount > 0 && (
+                    // Amber "pending" pill to match the postory-design nav badge
+                    // (same status-pending tokens as the review-queue pills, §4).
+                    <SidebarMenuBadge className="rounded-full bg-status-pending font-bold text-status-pending-foreground">
+                      {approvalsCount}
+                    </SidebarMenuBadge>
+                  )}
                 </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroup>

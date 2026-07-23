@@ -69,9 +69,10 @@ describe("ApprovalsPage — reviewer-only route gate (§7)", () => {
     await expect(ApprovalsPage({ searchParams })).rejects.toThrow(
       "REDIRECT:/dashboard",
     );
-    // The gate runs before any queue/brand read.
+    // The gate runs before ANY queue or brand read.
     expect(listPostsForReview).not.toHaveBeenCalled();
     expect(listBrandIdsForMember).not.toHaveBeenCalled();
+    expect(listBrands).not.toHaveBeenCalled();
   });
 
   it("lets an approver through to load the queue", async () => {

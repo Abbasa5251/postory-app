@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db/db";
 import { member, user } from "@/db/schemas/auth";
 import { brands } from "@/db/schemas/brands";
@@ -519,4 +519,30 @@ export async function listPostsForReview(
           (r.content?.targets.includes(filter.platform) ?? false),
       )
   );
+}
+
+/**
+ * How many posts sit in the reviewer's queue (E2 sidebar badge): IN_REVIEW +
+ * CLIENT_REVIEW within the given brand allowlist. Same scoping as
+ * listPostsForReview (orgScope + the allowlist + brandScope defense-in-depth);
+ * an empty allowlist → 0 (drizzle `inArray(col, [])` → SQL false). A cheap
+ * indexed count for the shell — no joins, no content hydration.
+ */
+export async function countPendingReview(
+  ctx: AuthCtx,
+  brandIds: string[],
+): Promise<number> {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(posts)
+    .where(
+      and(
+        orgScope(ctx, posts),
+        inArray(posts.brandId, brandIds),
+        brandScope(ctx, posts.brandId),
+        inArray(posts.status, ["IN_REVIEW", "CLIENT_REVIEW"]),
+      ),
+    );
+  // count(*) returns a bigint string on the wire — coerce to number.
+  return Number(row?.n ?? 0);
 }

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   approvePost,
+  countPendingReview,
   createDraft,
   getDraftById,
   listPostsForReview,
@@ -460,6 +461,24 @@ describe("listPostsForReview — cross-brand review queue (E2)", () => {
     const joinCond = renderedSql(chain.innerJoin.mock.calls[0]![1] as SQL);
     expect(joinCond.sql).toContain("org_id");
     expect(joinCond.params).toContain("org_1");
+  });
+
+  it("countPendingReview scopes to org_id + allowlist + review statuses", async () => {
+    const chain = makeSelectChain(select, [{ n: 2 }]);
+    const n = await countPendingReview(adminCtx, ["brand_1"]);
+    expect(n).toBe(2);
+    const { sql, params } = renderedWhere(chain);
+    expect(sql).toContain("org_id");
+    expect(params).toContain("org_1");
+    expect(params).toContain("brand_1");
+    expect(params).toContain("IN_REVIEW");
+    expect(params).toContain("CLIENT_REVIEW");
+  });
+
+  it("countPendingReview with an empty allowlist → 0, still org-scoped", async () => {
+    const chain = makeSelectChain(select, [{ n: 0 }]);
+    expect(await countPendingReview(adminCtx, [])).toBe(0);
+    expect(renderedWhere(chain).sql).toContain("org_id");
   });
 
   it("the platform filter keeps only posts targeting that platform", async () => {
