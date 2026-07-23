@@ -4,6 +4,7 @@ import { ImageIcon } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -23,6 +24,7 @@ import type { MediaLibraryItem } from "./types";
 const FACET_GROUPS = [
   {
     param: "kind",
+    label: "Type",
     allLabel: "All types",
     options: [
       { value: "image", label: "Images" },
@@ -31,6 +33,7 @@ const FACET_GROUPS = [
   },
   {
     param: "source",
+    label: "Source",
     allLabel: "All sources",
     options: [
       { value: "upload", label: "Uploaded" },
@@ -39,6 +42,7 @@ const FACET_GROUPS = [
   },
   {
     param: "moderation",
+    label: "Status",
     allLabel: "All statuses",
     options: [
       { value: "pending", label: "Pending" },
@@ -86,26 +90,36 @@ export function AssetLibrary({
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-center gap-2">
-        {FACET_GROUPS.map((group) => (
-          <Select
-            key={group.param}
-            value={active[group.param] ?? ALL}
-            onValueChange={(value) => setFacet(group.param, value ?? ALL)}
-          >
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>{group.allLabel}</SelectItem>
-              {group.options.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ))}
+      <div className="flex flex-wrap items-end gap-3">
+        {FACET_GROUPS.map((group) => {
+          const triggerId = `media-filter-${group.param}`;
+          return (
+            <div key={group.param} className="flex flex-col gap-1.5">
+              <Label
+                htmlFor={triggerId}
+                className="text-xs font-medium text-muted-foreground"
+              >
+                {group.label}
+              </Label>
+              <Select
+                value={active[group.param] ?? ALL}
+                onValueChange={(value) => setFacet(group.param, value ?? ALL)}
+              >
+                <SelectTrigger id={triggerId} className="w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>{group.allLabel}</SelectItem>
+                  {group.options.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          );
+        })}
         {hasFilters && (
           <Button
             type="button"
