@@ -25,7 +25,6 @@ const FACET_GROUPS = [
   {
     param: "kind",
     label: "Type",
-    allLabel: "All types",
     options: [
       { value: "image", label: "Images" },
       { value: "video", label: "Videos" },
@@ -34,7 +33,6 @@ const FACET_GROUPS = [
   {
     param: "source",
     label: "Source",
-    allLabel: "All sources",
     options: [
       { value: "upload", label: "Uploaded" },
       { value: "generated", label: "AI-generated" },
@@ -43,7 +41,6 @@ const FACET_GROUPS = [
   {
     param: "moderation",
     label: "Status",
-    allLabel: "All statuses",
     options: [
       { value: "pending", label: "Pending" },
       { value: "passed", label: "Approved" },
@@ -109,7 +106,7 @@ export function AssetLibrary({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={ALL}>{group.allLabel}</SelectItem>
+                  <SelectItem value={ALL}>All</SelectItem>
                   {group.options.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
