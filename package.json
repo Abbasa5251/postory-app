@@ -72,6 +72,7 @@
     "kysely": "^0.28.17"
   },
   "devDependencies": {
+    "@inngest/test": "^1.0.0",
     "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",

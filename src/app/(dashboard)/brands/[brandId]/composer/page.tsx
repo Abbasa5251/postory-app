@@ -76,7 +76,7 @@ export default async function ComposerPage({
   // initial payload (most recent first); full search/pagination is D4.
   const LIBRARY_PAGE_SIZE = 60;
   const libraryAssets = (
-    await listMediaForBrand(ctx, brandId, LIBRARY_PAGE_SIZE)
+    await listMediaForBrand(ctx, brandId, { limit: LIBRARY_PAGE_SIZE })
   ).map((asset) => ({
     id: asset.id,
     kind: asset.kind as "image" | "video",

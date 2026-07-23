@@ -69,3 +69,29 @@ export const recordUploadSchema = z.object({
   durationSeconds: z.number().int().nonnegative().optional(),
 });
 export type RecordUploadInput = z.infer<typeof recordUploadSchema>;
+
+/** Asset source — mirrors the `media_assets.source` CHECK vocabulary (D4). */
+export const mediaSourceSchema = z.enum(["upload", "generated"]);
+
+/** Moderation status — mirrors the `media_assets.moderation_status` CHECK (D4). */
+export const moderationStatusSchema = z.enum(["pending", "passed", "blocked"]);
+
+/**
+ * Asset-library facet filters (D4), parsed from the page's `searchParams`. Each
+ * field `.catch`es an invalid value to `undefined` so a hand-edited query string
+ * degrades to "unfiltered" rather than erroring the page. No free-text search —
+ * media_assets has no textual field to match on.
+ */
+export const mediaFacetSchema = z.object({
+  kind: mediaKindSchema.optional().catch(undefined),
+  source: mediaSourceSchema.optional().catch(undefined),
+  moderation: moderationStatusSchema.optional().catch(undefined),
+});
+export type MediaFacets = z.infer<typeof mediaFacetSchema>;
+
+/** Delete one asset (D4). brandId scopes revalidation; the DAL re-checks it. */
+export const deleteMediaSchema = z.object({
+  brandId: z.uuid("Brand id is required."),
+  mediaId: z.uuid("Media id is required."),
+});
+export type DeleteMediaInput = z.infer<typeof deleteMediaSchema>;

@@ -1,9 +1,10 @@
 import "server-only";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { db } from "@/db/db";
 import { mediaAssets } from "@/db/schemas/media";
+import { postVersions } from "@/db/schemas/posts";
 import { NotFoundError } from "@/server/domain/errors";
-import { recordAuditEvent } from "./audit";
+import { buildAuditInsert, recordAuditEvent } from "./audit";
 import { getById as getGenerationJobById } from "./generation-jobs";
 import { assertBrandAccess, brandScope, orgScope } from "./scope";
 import type { AuthCtx } from "./types";
@@ -33,6 +34,7 @@ export type MediaAsset = {
   height: number | null;
   durationSeconds: number | null;
   moderationStatus: string;
+  createdAt: Date;
 };
 
 const MEDIA_COLUMNS = {
@@ -47,7 +49,17 @@ const MEDIA_COLUMNS = {
   height: mediaAssets.height,
   durationSeconds: mediaAssets.durationSeconds,
   moderationStatus: mediaAssets.moderationStatus,
+  createdAt: mediaAssets.createdAt,
 } as const;
+
+/** Facet filters for the D4 asset-library listing (all optional, backed by
+ * real columns — the media_assets kind/source/moderation vocabularies). */
+export type MediaFilter = {
+  kind?: "image" | "video";
+  source?: "upload" | "generated";
+  moderationStatus?: "pending" | "passed" | "blocked";
+  limit?: number;
+};
 
 /**
  * Insert a media_asset row + its `media.create` audit (Case B, dal/audit.ts:
@@ -183,22 +195,121 @@ export async function recordGeneratedAsset(
 }
 
 /**
- * A brand's media assets, newest first — the composer library picker (C4).
- * Org-scoped + brand access asserted (creators 404 on unassigned brands). The
- * optional `limit` bounds the initial RSC payload; full search/pagination is D4.
+ * A brand's media assets, newest first — the composer library picker (C4) and
+ * the D4 asset-library page. Org-scoped + brand access asserted (creators 404 on
+ * unassigned brands). Optional facet filters (kind/source/moderation) narrow the
+ * list against real columns; `limit` bounds the payload. Keyset pagination is a
+ * deferred follow-up (a generous limit suffices at launch scale).
  */
 export async function listMediaForBrand(
   ctx: AuthCtx,
   brandId: string,
-  limit?: number,
+  filter: MediaFilter = {},
 ): Promise<MediaAsset[]> {
   assertBrandAccess(ctx, brandId);
+  const conditions = [
+    orgScope(ctx, mediaAssets),
+    eq(mediaAssets.brandId, brandId),
+  ];
+  if (filter.kind) conditions.push(eq(mediaAssets.kind, filter.kind));
+  if (filter.source) conditions.push(eq(mediaAssets.source, filter.source));
+  if (filter.moderationStatus)
+    conditions.push(eq(mediaAssets.moderationStatus, filter.moderationStatus));
   const query = db
     .select(MEDIA_COLUMNS)
     .from(mediaAssets)
-    .where(and(orgScope(ctx, mediaAssets), eq(mediaAssets.brandId, brandId)))
+    .where(and(...conditions))
     .orderBy(desc(mediaAssets.createdAt));
-  return limit === undefined ? query : query.limit(limit);
+  return filter.limit === undefined ? query : query.limit(filter.limit);
+}
+
+/**
+ * How many distinct posts reference each of `ids` (D4 usage count). Media is
+ * linked only via the `post_versions.media_ids` uuid[] roll-up (no FK — schema
+ * comment), so this LEFT JOINs versions whose array contains the asset id and
+ * counts distinct posts. One org-scoped query for a whole page; assets with no
+ * usage still appear (LEFT JOIN → count 0). Returns a Map keyed by asset id.
+ */
+export async function countMediaUsage(
+  ctx: AuthCtx,
+  ids: string[],
+): Promise<Map<string, number>> {
+  if (ids.length === 0) return new Map();
+  const rows = await db
+    .select({
+      id: mediaAssets.id,
+      uses: sql<number>`count(distinct ${postVersions.postId})`,
+    })
+    .from(mediaAssets)
+    .leftJoin(
+      postVersions,
+      and(
+        eq(postVersions.orgId, mediaAssets.orgId),
+        sql`${mediaAssets.id} = any(${postVersions.mediaIds})`,
+      ),
+    )
+    .where(and(orgScope(ctx, mediaAssets), inArray(mediaAssets.id, ids)))
+    .groupBy(mediaAssets.id);
+  // count() comes back as a bigint string on the wire — coerce to number.
+  return new Map(rows.map((r) => [r.id, Number(r.uses)]));
+}
+
+/**
+ * Delete a media asset (D4). §7 scoped fetch first (getMediaById 404s
+ * cross-org/unassigned and yields the r2Key the caller must remove from
+ * storage), then an atomic Case-A `db.batch` delete + `media.delete` audit
+ * (dal/audit.ts). Returns the r2Key so the caller (action or sweep) can delete
+ * the object AFTER the row is gone — DB-first, because a stray object is
+ * harmless but a dangling row is not. Shared by the delete action and the
+ * orphan-cleanup sweep.
+ */
+export async function deleteMediaAsset(
+  ctx: AuthCtx,
+  id: string,
+): Promise<string> {
+  const asset = await getMediaById(ctx, id);
+  const [deleted] = await db.batch([
+    db
+      .delete(mediaAssets)
+      .where(and(orgScope(ctx, mediaAssets), eq(mediaAssets.id, id)))
+      .returning({ id: mediaAssets.id }),
+    buildAuditInsert(ctx, {
+      action: "media.delete",
+      entityType: "media_asset",
+      entityId: id,
+      metadata: { brandId: asset.brandId, source: asset.source },
+    }),
+  ]);
+  if (deleted.length === 0) throw new NotFoundError("media_asset", id);
+  return asset.r2Key;
+}
+
+/**
+ * Generated assets that no post version references and are older than
+ * `olderThan` — the orphan-cleanup sweep's work list (D4, AGENTS.md §10). Only
+ * `source='generated'` (uploads are user-deliberate → never auto-deleted); the
+ * grace window (`olderThan`) spares freshly-generated-but-unpicked variants. The
+ * correlated NOT EXISTS matches an asset id against every version's media_ids
+ * array in the same org. Org-scoped like every read (the sweep builds a per-org
+ * system ctx). Returns id + r2Key so the caller removes both row and object.
+ */
+export async function findOrphanGeneratedAssets(
+  ctx: AuthCtx,
+  opts: { olderThan: Date; limit?: number },
+): Promise<{ id: string; r2Key: string }[]> {
+  const query = db
+    .select({ id: mediaAssets.id, r2Key: mediaAssets.r2Key })
+    .from(mediaAssets)
+    .where(
+      and(
+        orgScope(ctx, mediaAssets),
+        eq(mediaAssets.source, "generated"),
+        lt(mediaAssets.createdAt, opts.olderThan),
+        sql`not exists (select 1 from ${postVersions} where ${postVersions.orgId} = ${mediaAssets.orgId} and ${mediaAssets.id} = any(${postVersions.mediaIds}))`,
+      ),
+    )
+    .orderBy(mediaAssets.createdAt);
+  return opts.limit === undefined ? query : query.limit(opts.limit);
 }
 
 /**

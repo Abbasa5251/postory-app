@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  countMediaUsage,
+  deleteMediaAsset,
+  findOrphanGeneratedAssets,
   getMediaById,
   getMediaByIds,
   listMediaForBrand,
@@ -7,25 +10,31 @@ import {
   recordUpload,
 } from "@/server/dal/media";
 import { NotFoundError } from "@/server/domain/errors";
-import { memberCtx } from "../helpers/ctx";
+import { memberCtx, systemCtx } from "../helpers/ctx";
 import {
+  captureDelete,
   captureInserts,
+  makeBatch,
   makeSelectChain,
+  renderedSql,
   renderedWhere,
 } from "../helpers/db-mock";
 
 /**
- * A8 mock-level tenancy proof for the media DAL (C4). Every query is org-scoped
- * to ctx.orgId; the upload write sets org_id from the ctx and source='upload';
- * brand access is asserted (creators 404 on unassigned brands); the mutation
- * audits media.create. New method here → tests/authz/README.md.
+ * A8 mock-level tenancy proof for the media DAL (C4 + D4). Every query is
+ * org-scoped to ctx.orgId; the upload write sets org_id from the ctx and
+ * source='upload'; brand access is asserted (creators 404 on unassigned
+ * brands); mutations audit (media.create / media.delete). New method here →
+ * tests/authz/README.md.
  */
 
-const { select, insert } = vi.hoisted(() => ({
+const { select, insert, del, batch } = vi.hoisted(() => ({
   select: vi.fn(),
   insert: vi.fn(),
+  del: vi.fn(),
+  batch: vi.fn(),
 }));
-vi.mock("@/db/db", () => ({ db: { select, insert } }));
+vi.mock("@/db/db", () => ({ db: { select, insert, delete: del, batch } }));
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -47,6 +56,7 @@ const ASSET_ROW = {
   height: 1080,
   durationSeconds: null,
   moderationStatus: "pending",
+  createdAt: new Date("2026-07-20T00:00:00.000Z"),
 };
 
 describe("recordUpload — writes org_id from ctx, audits, brand-access gated", () => {
@@ -201,6 +211,115 @@ describe("listMediaForBrand — org + brand scoped", () => {
       listMediaForBrand(creatorCtx, "brand_2"),
     ).rejects.toBeInstanceOf(NotFoundError);
     expect(select).not.toHaveBeenCalled();
+  });
+
+  it("adds facet predicates (kind/source/moderation) to the where clause", async () => {
+    const chain = makeSelectChain(select, [ASSET_ROW]);
+    await listMediaForBrand(adminCtx, "brand_1", {
+      kind: "image",
+      source: "generated",
+      moderationStatus: "blocked",
+    });
+    const { sql, params } = renderedWhere(chain);
+    expect(sql).toContain("org_id");
+    expect(params).toContain("org_1");
+    expect(params).toContain("brand_1");
+    // The facet values render as bound params.
+    expect(params).toContain("image");
+    expect(params).toContain("generated");
+    expect(params).toContain("blocked");
+  });
+});
+
+describe("countMediaUsage — org-scoped usage aggregate", () => {
+  it("returns an empty map for no ids without querying", async () => {
+    const result = await countMediaUsage(adminCtx, []);
+    expect(result.size).toBe(0);
+    expect(select).not.toHaveBeenCalled();
+  });
+
+  it("scopes to org_id and returns a per-asset count (coerced to number)", async () => {
+    const chain = makeSelectChain(select, [
+      { id: "media_1", uses: "2" },
+      { id: "media_2", uses: "0" },
+    ]);
+    const result = await countMediaUsage(adminCtx, ["media_1", "media_2"]);
+    const { sql, params } = renderedWhere(chain);
+    expect(sql).toContain("org_id");
+    expect(params).toContain("org_1");
+    expect(result.get("media_1")).toBe(2);
+    expect(result.get("media_2")).toBe(0);
+  });
+});
+
+describe("deleteMediaAsset — org-scoped delete + audit", () => {
+  it("scopes the delete to org_id + id, audits media.delete, returns the r2Key", async () => {
+    makeSelectChain(select, [ASSET_ROW]); // getMediaById scoped fetch
+    const deleteCall = captureDelete(del, [{ id: "media_1" }]);
+    const inserts = captureInserts(insert, [{ id: "audit_1" }]);
+    makeBatch(batch);
+
+    const r2Key = await deleteMediaAsset(adminCtx, "media_1");
+    expect(r2Key).toBe(ASSET_ROW.r2Key);
+
+    const { sql, params } = renderedSql(deleteCall.where!);
+    expect(sql).toContain("org_id");
+    expect(params).toContain("org_1");
+    expect(params).toContain("media_1");
+    expect(inserts.some((c) => type(c.values).action === "media.delete")).toBe(
+      true,
+    );
+  });
+
+  it("404s (before delete) when the asset is nonexistent / cross-org", async () => {
+    makeSelectChain(select, []); // getMediaById finds nothing
+    captureDelete(del, []);
+    makeBatch(batch);
+    await expect(deleteMediaAsset(adminCtx, "media_x")).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
+    expect(del).not.toHaveBeenCalled();
+  });
+
+  it("404s when a creator deletes an asset on an unassigned brand", async () => {
+    const creatorCtx = memberCtx();
+    makeSelectChain(select, [{ ...ASSET_ROW, brandId: "brand_2" }]);
+    captureDelete(del, []);
+    makeBatch(batch);
+    await expect(
+      deleteMediaAsset(creatorCtx, "media_1"),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    expect(del).not.toHaveBeenCalled();
+  });
+
+  it("404s when the delete matches 0 rows (raced)", async () => {
+    makeSelectChain(select, [ASSET_ROW]);
+    captureDelete(del, []); // 0-row delete
+    makeBatch(batch);
+    await expect(deleteMediaAsset(adminCtx, "media_1")).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
+  });
+});
+
+describe("findOrphanGeneratedAssets — org-scoped orphan query", () => {
+  it("scopes to org_id, filters source='generated', and correlates on media_ids", async () => {
+    const chain = makeSelectChain(select, [
+      { id: "media_gen_1", r2Key: "org/org_1/brand/brand_1/gen.png" },
+    ]);
+    const result = await findOrphanGeneratedAssets(systemCtx(), {
+      olderThan: new Date("2026-07-16T00:00:00.000Z"),
+      limit: 200,
+    });
+    const { sql, params } = renderedWhere(chain);
+    expect(sql).toContain("org_id");
+    expect(params).toContain("org_1");
+    expect(params).toContain("generated");
+    // The correlated NOT EXISTS references post_versions.media_ids.
+    expect(sql.toLowerCase()).toContain("not exists");
+    expect(sql).toContain("media_ids");
+    expect(result).toHaveLength(1);
+    expect(result[0]!.r2Key).toBe("org/org_1/brand/brand_1/gen.png");
   });
 });
 

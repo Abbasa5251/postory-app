@@ -6,12 +6,21 @@ import {
   maxUploadBytesForKind,
   mediaKindForMime,
 } from "@/lib/platforms/config";
-import { createUploadSchema, recordUploadSchema } from "@/lib/validation/media";
+import {
+  createUploadSchema,
+  deleteMediaSchema,
+  recordUploadSchema,
+} from "@/lib/validation/media";
 import { getBrandById } from "@/server/dal/brands";
-import { recordUpload as recordUploadRow } from "@/server/dal/media";
+import {
+  deleteMediaAsset,
+  recordUpload as recordUploadRow,
+} from "@/server/dal/media";
 import { MediaRejectedError, NotFoundError } from "@/server/domain/errors";
+import { captureError, log } from "@/server/services/observability";
 import {
   buildMediaKey,
+  deleteObject,
   headObject,
   presignPut,
   publicUrl,
@@ -137,5 +146,38 @@ export const recordUpload = withAction(
       durationSeconds: asset.durationSeconds,
       moderationStatus: asset.moderationStatus,
     };
+  },
+);
+
+/**
+ * Delete a media asset from the library (D4). Reuses `post:create` like the
+ * upload actions (the library is the creator's surface; §7 matrix already
+ * covers it — no permissions.ts change). The DAL does the §7 scoped fetch
+ * (404s cross-org/unassigned), deletes the row + audits atomically, and returns
+ * the r2Key; we then delete the object. In-use deletes are allowed (the UI
+ * warns) — dangling `media_ids` in immutable post_versions degrade gracefully
+ * (getMediaByIds/resolveMediaAssets drop missing ids).
+ */
+export const deleteMedia = withAction(
+  deleteMediaSchema,
+  "post:create",
+  async (data, ctx) => {
+    const r2Key = await deleteMediaAsset(ctx, data.mediaId);
+
+    // Best-effort object delete AFTER the row is gone (DB-first): a stray object
+    // is harmless (the orphan sweep / storage lifecycle tolerates it), so a
+    // storage miss must never fail the action — the asset is already unlinked.
+    try {
+      await deleteObject(r2Key);
+    } catch (error) {
+      captureError(error, { ctx });
+      log.warn("media row deleted but its storage object was not removed", {
+        event: "media.delete.object_orphaned",
+        mediaId: data.mediaId,
+      });
+    }
+
+    revalidatePath(`/brands/${data.brandId}/media`);
+    return { id: data.mediaId };
   },
 );

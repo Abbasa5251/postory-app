@@ -14,6 +14,7 @@ export type SelectChain = {
   innerJoin: Mock;
   leftJoin: Mock;
   where: Mock;
+  groupBy: Mock;
   orderBy: Mock;
   limit: Mock;
 };
@@ -33,6 +34,7 @@ export function makeSelectChain(selectFn: Mock, rows: unknown[]): SelectChain {
     innerJoin: vi.fn(),
     leftJoin: vi.fn(),
     where: vi.fn(),
+    groupBy: vi.fn(),
     orderBy: vi.fn(),
     limit: vi.fn(),
     // Thenable: `await db.select()...where()` resolves to rows.
@@ -43,6 +45,8 @@ export function makeSelectChain(selectFn: Mock, rows: unknown[]): SelectChain {
   chain.innerJoin.mockReturnValue(chain);
   chain.leftJoin.mockReturnValue(chain);
   chain.where.mockReturnValue(chain);
+  // groupBy returns the (thenable) chain so an aggregate query resolves to rows.
+  chain.groupBy.mockReturnValue(chain);
   // orderBy returns the (thenable) chain so both `.orderBy()` terminal list
   // queries (awaited via chain.then) and `.orderBy().limit()` single-row
   // queries resolve to rows.
