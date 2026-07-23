@@ -109,7 +109,10 @@ export const creditRates = pgTable(
   (t) => [
     check(
       "credit_rates_action_check",
-      sql`${t.action} IN ('copy', 'image_standard', 'image_premium', 'video_standard', 'video_premium')`,
+      // 'moderation' (D5) is a 0-credit gate action: it holds the vision model id
+      // used to classify generated content (ADR-012 — model ids never hardcoded),
+      // but never moves the credit_ledger.
+      sql`${t.action} IN ('copy', 'image_standard', 'image_premium', 'video_standard', 'video_premium', 'moderation')`,
     ),
     uniqueIndex("credit_rates_model_uidx").on(t.modelId),
     index("credit_rates_action_active_idx")
