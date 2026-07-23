@@ -1,6 +1,6 @@
 import "server-only";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { generateImage, generateObject, streamText } from "ai";
+import { generateImage, generateText, Output, streamText } from "ai";
 import * as z from "zod";
 import { env } from "@/lib/env/server";
 import {
@@ -212,10 +212,14 @@ export type ModerateImageInput = {
 export async function moderateImage(
   input: ModerateImageInput,
 ): Promise<ModerationVerdict> {
-  const { object } = await generateObject({
+  const { output } = await generateText({
     model: getProvider().chat(input.modelId),
-    schema: moderationVerdictSchema,
-    schemaName: "moderation_verdict",
+    // generateObject is deprecated in ai@7 → structured output via generateText
+    // + Output.object (same validated verdict object).
+    output: Output.object({
+      schema: moderationVerdictSchema,
+      name: "moderation_verdict",
+    }),
     system: MODERATION_SYSTEM,
     messages: [
       {
@@ -229,7 +233,7 @@ export async function moderateImage(
     maxRetries: 0,
     abortSignal: input.signal,
   });
-  return object;
+  return output;
 }
 
 export type ModerateTextInput = {
@@ -249,14 +253,18 @@ export type ModerateTextInput = {
 export async function moderateText(
   input: ModerateTextInput,
 ): Promise<ModerationVerdict> {
-  const { object } = await generateObject({
+  const { output } = await generateText({
     model: getProvider().chat(input.modelId),
-    schema: moderationVerdictSchema,
-    schemaName: "moderation_verdict",
+    // generateObject is deprecated in ai@7 → structured output via generateText
+    // + Output.object (same validated verdict object).
+    output: Output.object({
+      schema: moderationVerdictSchema,
+      name: "moderation_verdict",
+    }),
     system: MODERATION_SYSTEM,
     prompt: `Classify this social-media caption:\n\n${input.text}`,
     maxRetries: 0,
     abortSignal: input.signal,
   });
-  return object;
+  return output;
 }

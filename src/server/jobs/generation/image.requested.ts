@@ -181,9 +181,12 @@ export const generateImageJob = inngest.createFunction(
                 categories: raw.categories,
               });
             } catch {
-              // Fail-closed: record the block if we can; if even that write
-              // fails the row stays 'pending', which the publish gate (F) also
-              // refuses — safe by default.
+              // Fail-closed: reset the local status FIRST so a failure AFTER a
+              // passed verdict (e.g. setModerationStatus threw) can never leave
+              // the client-facing status as 'passed'. Then record the block if we
+              // can; if even that write fails the row stays 'pending', which the
+              // publish gate (F) also refuses — safe by default.
+              moderationStatus = "blocked";
               try {
                 await setModerationStatus(ctx, recorded.id, "blocked", {
                   reason: "moderation error",

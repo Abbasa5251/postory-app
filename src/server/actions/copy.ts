@@ -47,10 +47,15 @@ export const generateCopy = withAction(
     // yields the brand voice profile that shapes the prompt (B2).
     const brand = await getBrandById(ctx, data.brandId);
 
-    // D5 prompt gate (deterministic, fail-fast) on the brief + any refine
-    // instruction — a blocked prompt never generates anything (nothing spent).
+    // D5 prompt gate (deterministic, fail-fast) on ALL client-supplied text —
+    // the brief, the refine instruction, AND the caption being refined
+    // (refineFrom) — a blocked prompt never generates anything (nothing spent).
     // Output moderation on the generated captions runs in the worker.
-    if (screenPrompt(`${data.brief}\n${data.instruction ?? ""}`).blocked)
+    if (
+      screenPrompt(
+        `${data.brief}\n${data.instruction ?? ""}\n${data.refineFrom ?? ""}`,
+      ).blocked
+    )
       throw new ModerationError();
 
     // Model id + price from config (ADR-012), never hardcoded / client-supplied.
