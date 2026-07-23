@@ -26,12 +26,14 @@ via `dal/credits.ts` (`getActiveRate`) — never hardcoded here (ADR-012).
 
 ## Images (D2)
 
-`generateImages({ modelId, prompt, aspectRatio, n })` returns `{ bytes, mediaType }[]`
-— decoded image bytes the Inngest job stores in R2 (`storage.putObject`) and
-records as a `media_assets` row (`source='generated'`). OpenRouter's image models
-cap `n` per request at 1, so the job **fans out one call per variant** (`n: 1`),
-keeping per-image failures isolated and refundable (failed generations are
-unbilled by OpenRouter → refund the reservation, ADR-012 / §8). The prompt is
+`generateImages({ modelId, prompt, aspectRatio, n })` returns
+`{ bytes, mediaType, providerId }[]` — decoded image bytes the Inngest job stores
+in R2 (`storage.putObject`) and records as a `media_assets` row
+(`source='generated'`); `providerId` is OpenRouter's `x-request-id` response
+header, persisted on the generation job for billing cross-reference. OpenRouter's
+image models cap `n` per request at 1, so the job **fans out one call per
+variant** (`n: 1`), keeping per-image failures isolated and refundable (failed
+generations are unbilled by OpenRouter → refund the reservation, ADR-012 / §8). The prompt is
 assembled in `domain/image-prompt.ts` (pure); the tier→model+price mapping lives
 in `credit_rates` (`image_standard` / `image_premium`).
 
