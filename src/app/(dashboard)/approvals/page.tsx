@@ -1,4 +1,5 @@
 import { CheckCircle2 } from "lucide-react";
+import { redirect } from "next/navigation";
 import type { PreviewIdentity } from "@/components/features/composer/post-preview";
 import { ApprovalsFilters } from "@/components/features/approvals/approvals-filters";
 import { ReviewQueue } from "@/components/features/approvals/review-queue";
@@ -38,6 +39,13 @@ export default async function ApprovalsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const ctx = await getAuthCtx();
+  // Gate the whole reviewer surface server-side (§7): only the post:approve
+  // roles (owner/admin/approver) may load the queue. The sidebar hides the link
+  // for others; this rejects a direct navigation BEFORE any queue/brand read
+  // (client-side hiding is UX sugar — the server is the boundary).
+  const canApprove = can(ctx, "post:approve");
+  if (!canApprove) redirect("/dashboard");
+
   const filters = await loadApprovalFilters(searchParams);
 
   // E2: reviewer visibility is scoped to the member's brand_members assignments
@@ -141,9 +149,9 @@ export default async function ApprovalsPage({
           posts={posts}
           mediaAssets={mediaAssets}
           identities={identities}
-          // UX gate only — approvePost/requestChanges re-enforce post:approve
-          // server-side. A creator reaching this URL directly gets a read-only view.
-          canApprove={can(ctx, "post:approve")}
+          // Always true past the page gate above; the mutating actions
+          // (approvePost/requestChanges) still re-enforce post:approve server-side.
+          canApprove={canApprove}
         />
       )}
     </div>
