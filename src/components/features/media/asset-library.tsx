@@ -13,12 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AssetCard } from "./asset-card";
-import {
-  mediaFilterParsers,
-  type MediaKind,
-  type MediaModeration,
-  type MediaSource,
-} from "./search-params";
+import { mediaFilterParsers } from "./search-params";
 import type { MediaLibraryItem } from "./types";
 
 /** Facet groups → the nuqs param keys. Values mirror the media_assets
@@ -78,13 +73,22 @@ export function AssetLibrary({
     param: (typeof FACET_GROUPS)[number]["param"],
     value: string,
   ) {
-    // `value` is either ALL or one of this group's literal options (the Select
-    // items), so the per-key cast to the parser's literal type is sound.
-    const v = value === ALL ? null : value;
-    if (param === "kind") void setFilters({ kind: v as MediaKind | null });
+    // ALL clears the filter; otherwise run the value through the matching
+    // parser, which narrows it to the facet's literal (or null for anything
+    // unexpected) — no casts, and consistent with how the URL is parsed.
+    if (param === "kind")
+      void setFilters({
+        kind: value === ALL ? null : mediaFilterParsers.kind.parse(value),
+      });
     else if (param === "source")
-      void setFilters({ source: v as MediaSource | null });
-    else void setFilters({ moderation: v as MediaModeration | null });
+      void setFilters({
+        source: value === ALL ? null : mediaFilterParsers.source.parse(value),
+      });
+    else
+      void setFilters({
+        moderation:
+          value === ALL ? null : mediaFilterParsers.moderation.parse(value),
+      });
   }
 
   function clearAll() {
