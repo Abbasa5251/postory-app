@@ -88,7 +88,7 @@ export const generateCopyJob = inngest.createFunction(
       startJob(ctx, d.jobId, { creditsReserved: d.credits }),
     );
 
-    const fullText = await step.run("generate", async () => {
+    const generated = await step.run("generate", async () => {
       const { system, prompt } = buildCopyPrompt({
         platform: d.platform,
         brief: d.brief,
@@ -97,7 +97,7 @@ export const generateCopyJob = inngest.createFunction(
         refineFrom: d.refineFrom,
         instruction: d.instruction,
       });
-      const { textStream, text } = streamCaption({
+      const { textStream, text, providerId } = streamCaption({
         modelId: d.modelId,
         system,
         prompt,
@@ -108,10 +108,10 @@ export const generateCopyJob = inngest.createFunction(
           text: delta,
         });
       }
-      return await text;
+      return { text: await text, providerId: await providerId };
     });
 
-    const variants = parseVariants(fullText, d.variantCount);
+    const variants = parseVariants(generated.text, d.variantCount);
 
     // Copy is fixed-cost: used === reserved on success, so the settle refund is
     // 0. The refundOnSettle seam is what D2's variable image cost will use.
@@ -122,6 +122,7 @@ export const generateCopyJob = inngest.createFunction(
       await completeJob(ctx, d.jobId, {
         status: "succeeded",
         creditsSettled: d.credits - refund,
+        providerGenerationId: generated.providerId ?? undefined,
       });
     });
 

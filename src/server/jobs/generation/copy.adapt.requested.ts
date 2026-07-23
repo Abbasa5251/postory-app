@@ -91,18 +91,20 @@ export const adaptCopyJob = inngest.createFunction(
           // response, etc.) marks the platform unsuccessful → its credit is
           // refunded at settle and it's reported in `failed`.
           let caption: string;
+          let providerId: string | null = null;
           try {
             const { system, prompt } = buildAdaptPrompt({
               platform,
               sourceCaption: d.sourceCaption,
               voiceProfile: d.voiceProfile,
             });
-            const { text } = streamCaption({
+            const { text, providerId: pid } = streamCaption({
               modelId: d.modelId,
               system,
               prompt,
             });
             caption = (await text).trim();
+            providerId = await pid;
           } catch {
             return { platform, ok: false as const };
           }
@@ -119,7 +121,7 @@ export const adaptCopyJob = inngest.createFunction(
           } catch {
             // Swallow — best-effort live delivery; the caption is durable above.
           }
-          return { platform, ok: true as const, caption };
+          return { platform, ok: true as const, caption, providerId };
         }),
       ),
     );
@@ -131,6 +133,11 @@ export const adaptCopyJob = inngest.createFunction(
     const captions = results.flatMap((r) =>
       r.ok ? [{ platform: r.platform, caption: r.caption }] : [],
     );
+    // One OpenRouter generation per platform → record the set of provider ids
+    // (joined) for billing cross-reference, like the image job.
+    const providerIds = results.flatMap((r) =>
+      r.ok && r.providerId ? [r.providerId] : [],
+    );
 
     // Charge only the platforms that succeeded; refund the rest.
     await step.run("settle", async () => {
@@ -141,6 +148,9 @@ export const adaptCopyJob = inngest.createFunction(
       await completeJob(ctx, d.jobId, {
         status: succeeded.length > 0 ? "succeeded" : "failed",
         creditsSettled: used,
+        providerGenerationId: providerIds.length
+          ? providerIds.join(",")
+          : undefined,
         error:
           failed.length > 0
             ? `adaptation failed for: ${failed.join(", ")}`

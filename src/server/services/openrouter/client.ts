@@ -51,6 +51,14 @@ export type StreamCaptionResult = {
   textStream: AsyncIterable<string>;
   /** Resolves to the full generated text once the stream completes. */
   text: PromiseLike<string>;
+  /**
+   * OpenRouter's generation id — the response body `id` (the `gen-…` id chat
+   * completions return), falling back to the `x-request-id` header. Resolves
+   * once the stream completes; persisted on the generation job for billing
+   * cross-reference. Never rejects (→ `null`), so an unconsumed value in an
+   * error path can't surface as an unhandled rejection.
+   */
+  providerId: Promise<string | null>;
 };
 
 /**
@@ -69,7 +77,13 @@ export function streamCaption(input: StreamCaptionInput): StreamCaptionResult {
     maxOutputTokens: 1500,
     abortSignal: input.signal,
   });
-  return { textStream: result.textStream, text: result.text };
+  return {
+    textStream: result.textStream,
+    text: result.text,
+    providerId: Promise.resolve(result.response)
+      .then((r) => r.id ?? r.headers?.["x-request-id"] ?? null)
+      .catch(() => null),
+  };
 }
 
 export type GenerateImagesInput = {
