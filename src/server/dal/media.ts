@@ -248,7 +248,16 @@ export async function countMediaUsage(
         sql`${mediaAssets.id} = any(${postVersions.mediaIds})`,
       ),
     )
-    .where(and(orgScope(ctx, mediaAssets), inArray(mediaAssets.id, ids)))
+    .where(
+      and(
+        orgScope(ctx, mediaAssets),
+        inArray(mediaAssets.id, ids),
+        // Same brand narrowing as getMediaByIds (creators → assigned brands
+        // only), so counts can't be computed for ids outside the caller's
+        // reach even if a caller forgets to pre-filter (§6.4 belt-and-suspenders).
+        brandScope(ctx, mediaAssets.brandId),
+      ),
+    )
     .groupBy(mediaAssets.id);
   // count() comes back as a bigint string on the wire — coerce to number.
   return new Map(rows.map((r) => [r.id, Number(r.uses)]));
@@ -258,15 +267,16 @@ export async function countMediaUsage(
  * Delete a media asset (D4). §7 scoped fetch first (getMediaById 404s
  * cross-org/unassigned and yields the r2Key the caller must remove from
  * storage), then an atomic Case-A `db.batch` delete + `media.delete` audit
- * (dal/audit.ts). Returns the r2Key so the caller (action or sweep) can delete
- * the object AFTER the row is gone — DB-first, because a stray object is
- * harmless but a dangling row is not. Shared by the delete action and the
- * orphan-cleanup sweep.
+ * (dal/audit.ts). Returns the asset's VERIFIED `brandId` (from the scoped fetch,
+ * not caller input — the caller revalidates that brand's page) and `r2Key` so
+ * the caller (action or sweep) can delete the object AFTER the row is gone —
+ * DB-first, because a stray object is harmless but a dangling row is not. Shared
+ * by the delete action and the orphan-cleanup sweep.
  */
 export async function deleteMediaAsset(
   ctx: AuthCtx,
   id: string,
-): Promise<string> {
+): Promise<{ r2Key: string; brandId: string }> {
   const asset = await getMediaById(ctx, id);
   const [deleted] = await db.batch([
     db
@@ -281,7 +291,7 @@ export async function deleteMediaAsset(
     }),
   ]);
   if (deleted.length === 0) throw new NotFoundError("media_asset", id);
-  return asset.r2Key;
+  return { r2Key: asset.r2Key, brandId: asset.brandId };
 }
 
 /**

@@ -253,14 +253,15 @@ describe("countMediaUsage — org-scoped usage aggregate", () => {
 });
 
 describe("deleteMediaAsset — org-scoped delete + audit", () => {
-  it("scopes the delete to org_id + id, audits media.delete, returns the r2Key", async () => {
+  it("scopes the delete to org_id + id, audits media.delete, returns r2Key + verified brandId", async () => {
     makeSelectChain(select, [ASSET_ROW]); // getMediaById scoped fetch
     const deleteCall = captureDelete(del, [{ id: "media_1" }]);
     const inserts = captureInserts(insert, [{ id: "audit_1" }]);
     makeBatch(batch);
 
-    const r2Key = await deleteMediaAsset(adminCtx, "media_1");
-    expect(r2Key).toBe(ASSET_ROW.r2Key);
+    const result = await deleteMediaAsset(adminCtx, "media_1");
+    expect(result.r2Key).toBe(ASSET_ROW.r2Key);
+    expect(result.brandId).toBe(ASSET_ROW.brandId);
 
     const { sql, params } = renderedSql(deleteCall.where!);
     expect(sql).toContain("org_id");

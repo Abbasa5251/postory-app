@@ -18,12 +18,14 @@ const {
   deleteMediaAsset,
   deleteObject,
   logWarn,
+  logError,
 } = vi.hoisted(() => ({
   listOrgIdsForSweep: vi.fn(),
   findOrphanGeneratedAssets: vi.fn(),
   deleteMediaAsset: vi.fn(),
   deleteObject: vi.fn(),
   logWarn: vi.fn(),
+  logError: vi.fn(),
 }));
 
 vi.mock("@/server/dal/org", () => ({ listOrgIdsForSweep }));
@@ -33,7 +35,7 @@ vi.mock("@/server/dal/media", () => ({
 }));
 vi.mock("@/server/services/storage", () => ({ deleteObject }));
 vi.mock("@/server/services/observability", () => ({
-  log: { info: vi.fn(), warn: logWarn, error: vi.fn(), debug: vi.fn() },
+  log: { info: vi.fn(), warn: logWarn, error: logError, debug: vi.fn() },
 }));
 // Pure ctx factory — mock so the test doesn't load the whole auth stack.
 vi.mock("@/server/auth/context", () => ({
@@ -61,7 +63,7 @@ describe("orphanMediaCleanupJob", () => {
         : Promise.resolve([{ id: "m3", r2Key: "k3" }]),
     );
     deleteMediaAsset.mockImplementation((_ctx: unknown, id: string) =>
-      Promise.resolve(`key-${id}`),
+      Promise.resolve({ r2Key: `key-${id}`, brandId: "brand_1" }),
     );
     deleteObject.mockResolvedValue(undefined);
 
@@ -117,7 +119,7 @@ describe("orphanMediaCleanupJob", () => {
     deleteMediaAsset.mockImplementation((_ctx: unknown, id: string) =>
       id === "m1"
         ? Promise.reject(new NotFoundError("media_asset", id))
-        : Promise.resolve(`key-${id}`),
+        : Promise.resolve({ r2Key: `key-${id}`, brandId: "brand_1" }),
     );
     deleteObject.mockResolvedValue(undefined);
 
@@ -134,7 +136,7 @@ describe("orphanMediaCleanupJob", () => {
   it("is best-effort on a storage-delete miss (logs, still counts the row)", async () => {
     listOrgIdsForSweep.mockResolvedValue(["org_1"]);
     findOrphanGeneratedAssets.mockResolvedValue([{ id: "m1", r2Key: "k1" }]);
-    deleteMediaAsset.mockResolvedValue("key-m1");
+    deleteMediaAsset.mockResolvedValue({ r2Key: "key-m1", brandId: "brand_1" });
     deleteObject.mockRejectedValue(new Error("R2 unreachable"));
 
     const engine = new InngestTestEngine({ function: orphanMediaCleanupJob });
@@ -144,5 +146,26 @@ describe("orphanMediaCleanupJob", () => {
     // The row is gone; a stray object doesn't fail the sweep.
     expect(result).toEqual({ orgs: 1, deleted: 1 });
     expect(logWarn).toHaveBeenCalled();
+  });
+
+  it("isolates a failing org so later orgs still get swept", async () => {
+    listOrgIdsForSweep.mockResolvedValue(["org_1", "org_2"]);
+    findOrphanGeneratedAssets.mockImplementation((ctx: { orgId: string }) =>
+      ctx.orgId === "org_1"
+        ? Promise.reject(new Error("db unavailable"))
+        : Promise.resolve([{ id: "m3", r2Key: "k3" }]),
+    );
+    deleteMediaAsset.mockResolvedValue({ r2Key: "key-m3", brandId: "brand_2" });
+    deleteObject.mockResolvedValue(undefined);
+
+    const engine = new InngestTestEngine({ function: orphanMediaCleanupJob });
+    const { result, error } = await engine.execute();
+
+    // org_1 failed but was logged and skipped; org_2 still swept.
+    expect(error).toBeUndefined();
+    expect(result).toEqual({ orgs: 2, deleted: 1 });
+    expect(deleteObject).toHaveBeenCalledTimes(1);
+    expect(deleteObject).toHaveBeenCalledWith("key-m3");
+    expect(logError).toHaveBeenCalled();
   });
 });

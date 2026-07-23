@@ -32,13 +32,22 @@ export function AssetCard({
         {item.kind === "video" ? (
           <video
             src={item.url}
+            poster={item.posterUrl ?? undefined}
             className="size-full object-cover"
             muted
             preload="metadata"
           />
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={item.url} alt="" className="size-full object-cover" />
+          <img
+            src={item.url}
+            alt={
+              item.source === "generated"
+                ? "AI-generated image"
+                : "Uploaded image"
+            }
+            className="size-full object-cover"
+          />
         )}
         <div className="absolute top-2 left-2 flex gap-1">
           <Badge variant="secondary">

@@ -38,6 +38,9 @@ const PER_ORG_LIMIT = 200;
  * works off a fresh orphan query, so a retry re-finds only what's still present
  * (already-deleted rows are gone). `deleteObject` is best-effort (a stray object
  * is harmless); a benign delete race (row already gone) is skipped, not fatal.
+ * Per-org failure isolation: a failing org is caught + logged inside its step
+ * and the sweep continues, so one bad tenant can't abort the run (the next
+ * weekly run retries it).
  */
 export const orphanMediaCleanupJob = inngest.createFunction(
   {
@@ -55,34 +58,47 @@ export const orphanMediaCleanupJob = inngest.createFunction(
     for (const orgId of orgIds) {
       const deleted = await step.run(`sweep-${orgId}`, async () => {
         const ctx = getSystemCtx(orgId, JOB_NAME);
-        const orphans = await findOrphanGeneratedAssets(ctx, {
-          olderThan: cutoff,
-          limit: PER_ORG_LIMIT,
-        });
         let count = 0;
-        for (const orphan of orphans) {
-          let r2Key: string;
-          try {
-            r2Key = await deleteMediaAsset(ctx, orphan.id);
-          } catch (error) {
-            // Row already gone (raced with a manual delete) — benign, skip it.
-            // Any other error bubbles to trigger the step retry.
-            if (error instanceof NotFoundError) continue;
-            throw error;
+        try {
+          const orphans = await findOrphanGeneratedAssets(ctx, {
+            olderThan: cutoff,
+            limit: PER_ORG_LIMIT,
+          });
+          for (const orphan of orphans) {
+            let r2Key: string;
+            try {
+              ({ r2Key } = await deleteMediaAsset(ctx, orphan.id));
+            } catch (error) {
+              // Row already gone (raced with a manual delete) — benign, skip it.
+              // Any other error bubbles to the per-org catch below.
+              if (error instanceof NotFoundError) continue;
+              throw error;
+            }
+            try {
+              await deleteObject(r2Key);
+            } catch (error) {
+              // The row is gone; a stray object is harmless. Log and move on so
+              // a single storage miss can't strand the rest of the sweep.
+              log.warn("orphan media object not removed", {
+                event: "media.orphan_cleanup.object_orphaned",
+                orgId,
+                mediaId: orphan.id,
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+            count += 1;
           }
-          try {
-            await deleteObject(r2Key);
-          } catch (error) {
-            // The row is gone; a stray object is harmless. Log and move on so a
-            // single storage miss can't strand the rest of the sweep.
-            log.warn("orphan media object not removed", {
-              event: "media.orphan_cleanup.object_orphaned",
-              orgId,
-              mediaId: orphan.id,
-              error: error instanceof Error ? error.message : String(error),
-            });
-          }
-          count += 1;
+        } catch (error) {
+          // Isolate the org: a failure here (the orphan query, or a non-benign
+          // delete error) is logged and the sweep moves on so one bad tenant
+          // can't abort the rest of the run. The next weekly run retries it
+          // (the sweep is idempotent); `count` reflects any deletions that did
+          // land before the failure.
+          log.error("orphan media cleanup failed for org", {
+            event: "media.orphan_cleanup.org_failed",
+            orgId,
+            error: error instanceof Error ? error.message : String(error),
+          });
         }
         return count;
       });

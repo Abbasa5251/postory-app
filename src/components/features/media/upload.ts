@@ -17,39 +17,56 @@ import type { MediaAssetView } from "@/components/features/composer/media-types"
  * video, but finite so a dead connection frees the upload slot. */
 export const UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 
+/** A metadata probe must never hang the upload; give up after this (ms). */
+const PROBE_TIMEOUT_MS = 5_000;
+
 /** Client-probe an image/video for its natural dimensions (+ video duration). */
 export async function probeDimensions(
   file: File,
   kind: "image" | "video",
 ): Promise<{ width?: number; height?: number; durationSeconds?: number }> {
   const url = URL.createObjectURL(file);
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
+    // Reject if metadata never arrives (corrupt file, an onload/onerror that
+    // never fires) so the catch below returns empty dims and the upload
+    // proceeds rather than hanging forever.
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(
+        () => reject(new Error("probe timed out")),
+        PROBE_TIMEOUT_MS,
+      );
+    });
     if (kind === "image") {
       const img = new Image();
-      await new Promise<void>((resolve, reject) => {
+      const load = new Promise<void>((resolve, reject) => {
         img.onload = () => resolve();
         img.onerror = () => reject(new Error("probe failed"));
         img.src = url;
       });
+      await Promise.race([load, timeout]);
       return { width: img.naturalWidth, height: img.naturalHeight };
     }
     const video = document.createElement("video");
     video.preload = "metadata";
-    await new Promise<void>((resolve, reject) => {
+    const load = new Promise<void>((resolve, reject) => {
       video.onloadedmetadata = () => resolve();
       video.onerror = () => reject(new Error("probe failed"));
       video.src = url;
     });
+    await Promise.race([load, timeout]);
     return {
       width: video.videoWidth,
       height: video.videoHeight,
       durationSeconds: Math.round(video.duration),
     };
   } catch {
-    // Probe is advisory — a failure just means no dims (server still gates
-    // mime/size; publish gates aspect/duration). Don't block the upload.
+    // Probe is advisory — a failure (or timeout) just means no dims (server
+    // still gates mime/size; publish gates aspect/duration). Don't block the
+    // upload.
     return {};
   } finally {
+    if (timer !== undefined) clearTimeout(timer);
     URL.revokeObjectURL(url);
   }
 }

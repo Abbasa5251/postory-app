@@ -162,7 +162,9 @@ export const deleteMedia = withAction(
   deleteMediaSchema,
   "post:create",
   async (data, ctx) => {
-    const r2Key = await deleteMediaAsset(ctx, data.mediaId);
+    // brandId comes back verified from the scoped fetch (not caller input), so
+    // we always revalidate the page the asset actually belonged to.
+    const { r2Key, brandId } = await deleteMediaAsset(ctx, data.mediaId);
 
     // Best-effort object delete AFTER the row is gone (DB-first): a stray object
     // is harmless (the orphan sweep / storage lifecycle tolerates it), so a
@@ -177,7 +179,7 @@ export const deleteMedia = withAction(
       });
     }
 
-    revalidatePath(`/brands/${data.brandId}/media`);
+    revalidatePath(`/brands/${brandId}/media`);
     return { id: data.mediaId };
   },
 );
