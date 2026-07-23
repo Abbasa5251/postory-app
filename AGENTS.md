@@ -40,7 +40,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 |---|---|---|
 | Framework | Next.js 16.x (App Router, Turbopack) | `https://nextjs.org/docs` — index at `/docs/llms.txt`; pages available as `.md` |
 | Language | TypeScript (strict) | — |
-| UI | Tailwind CSS v4, shadcn/ui, Radix, better-auth-ui | `tailwindcss.com/docs`, `ui.shadcn.com`, `better-auth-ui.com/docs` |
+| UI | Tailwind CSS v4, shadcn/ui, Base-UI, better-auth-ui | `tailwindcss.com/docs`, `ui.shadcn.com`, `better-auth-ui.com/docs` |
 | Auth & orgs | better-auth + organization plugin | `better-auth.com/docs` (organization plugin page is required reading for any auth task) |
 | ORM / DB | Drizzle ORM + Neon Postgres | `orm.drizzle.team/docs`, `neon.com/docs` |
 | Jobs | Inngest | `inngest.com/docs` |
@@ -73,6 +73,10 @@ Your training data is stale for every library above. Assume it. The procedure fo
 - **Zernio:** one account per platform per profile (pending R1 verification — see ADR-009). Post creation returns a `zernio_post_id` we must persist. Webhooks must be signature-verified. Billing is per connected account (account-days) — disconnecting accounts stops the meter, which the trial-expiry job relies on.
 - **Stripe:** we use Subscriptions + Checkout + Customer Portal + webhooks directly (NOT better-auth's Stripe plugin, NOT Clerk Billing patterns from old tutorials). Amounts are integers in the smallest currency unit. Webhook handlers must verify signatures with the raw request body.
 - **OpenRouter (ADR-012 — every AI call goes through it):** text = OpenAI-compatible chat completions via the AI SDK OpenRouter provider. Images = the **dedicated Image API** (`POST /api/v1/images`), NOT LLM-image chat models. Per-model capabilities (aspect ratios, reference-image limits, max outputs, pricing) differ — read them from `/api/v1/images/models/{id}/endpoints` instead of hardcoding or guessing. Images return **base64** — decode and store in R2; never assume URLs. Failed/cancelled generations are NOT billed by OpenRouter — always refund reserved credits on error. Model ids and prices come from the `credit_rates` config table, never hardcoded. All generation runs inside Inngest jobs, never request handlers.
+- **Base UI (`@base-ui/react` 1.x — our shadcn primitives wrap this, NOT Radix; verified 1.6.0):** APIs differ from Radix — do not assume Radix behavior.
+  - **`Select.Value` renders the RAW selected value, not the chosen item's text** (Radix rendered the item's children). So a `<SelectValue />` on a Select whose option `value` differs from its visible label (a brand/entity **id**, an enum slug like `image`) shows the id/slug in the collapsed trigger. Fix: pass a **function child** `<SelectValue>{(value) => labelFor(value)}</SelectValue>` (map value→label yourself), or give `Select.Root` an `items` map. The dropdown items look correct either way — only the trigger is wrong — so this bug hides until you actually select a non-default option. Reference: `src/components/features/approvals/approvals-filters.tsx`.
+  - **`Select.Root` `onValueChange` yields `string | null`** (null when cleared) — coerce/guard the null before running it through a nuqs parser or `parse()`.
+  - Composition uses the `render` prop (e.g. `<SidebarMenuButton render={<Link/>}/>`), not `asChild`; `Dialog` is dismissible on outside-press/Esc by default (unlike `AlertDialog`).
 
 ---
 
@@ -343,17 +347,17 @@ Webhook processors are tested with recorded fixture payloads (valid, invalid-sig
 ## 14. Commands
 
 ```bash
-pnpm dev                 # next dev (Turbopack)
-pnpm build && pnpm start
-pnpm typecheck           # tsc --noEmit
-pnpm lint                # ESLint (includes boundary + no-restricted-imports rules)
-pnpm test                # vitest unit + authz
-pnpm test:authz          # the tenancy/role matrix suite alone
-pnpm test:e2e            # playwright
-pnpm db:generate         # drizzle-kit generate (schema → SQL)
-pnpm db:migrate          # apply migrations
-pnpm db:studio
-pnpm inngest:dev         # local Inngest dev server
+npm run dev                 # next dev (Turbopack)
+npm run build && npm run start
+npm run typecheck           # tsc --noEmit
+npm run lint                # ESLint (includes boundary + no-restricted-imports rules)
+npm run test                # vitest unit + authz
+npm run test:authz          # the tenancy/role matrix suite alone
+npm run test:e2e            # playwright
+npm run db:generate         # drizzle-kit generate (schema → SQL)
+npm run db:migrate          # apply migrations
+npm run db:studio
+npm run inngest:dev         # local Inngest dev server
 ```
 CI gate = typecheck + lint + unit + authz + build. E2E nightly + pre-release.
 
@@ -383,3 +387,17 @@ Adding a variable = update `env.ts` schema + `.env.example` + deployment docs in
 - ❌ New dependency with no justification
 
 ---
+
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs live as GitHub issues in `Abbasa5251/postory-app`, driven via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five canonical roles (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context — one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
