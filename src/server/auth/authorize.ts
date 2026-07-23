@@ -23,8 +23,20 @@ type AuthorizeRequest = Parameters<(typeof roles)["owner"]["authorize"]>[0];
  * truth, guarded by the release-blocking authz matrix.
  */
 export function authorize(ctx: AuthCtx, permission: Permission): void {
+  if (!can(ctx, permission)) {
+    throw new ForbiddenError();
+  }
+}
+
+/**
+ * Non-throwing form of the coarse gate — the SAME check as `authorize`, for
+ * server components that decide which controls to render (e.g. showing Approve
+ * buttons only to reviewers). UX only: the mutating action always re-runs
+ * `authorize` server-side (§7), so this never becomes the security boundary.
+ */
+export function can(ctx: AuthCtx, permission: Permission): boolean {
   // Background jobs (§6.7) run with full trust and never carry a member role.
-  if (ctx.role === "system") return;
+  if (ctx.role === "system") return true;
 
   const [resource, action] = permission.split(":");
   // `permission` is a typed `${resource}:${action}` union, but splitting erases
@@ -32,7 +44,5 @@ export function authorize(ctx: AuthCtx, permission: Permission): void {
   // inferred as the authorize request. Safe: the Permission type guarantees
   // resource/action name a real statement entry.
   const request = { [resource]: [action] } as AuthorizeRequest;
-  if (!roles[ctx.role].authorize(request).success) {
-    throw new ForbiddenError();
-  }
+  return roles[ctx.role].authorize(request).success;
 }
