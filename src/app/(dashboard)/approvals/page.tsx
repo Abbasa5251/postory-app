@@ -15,9 +15,6 @@ import { getMediaByIds } from "@/server/dal/media";
 import { listPostsForReview, type ReviewPost } from "@/server/dal/posts";
 import { toMediaAssetView } from "@/server/media-views";
 
-// Bound the media payload like the composer/E1 approvals page.
-const MEDIA_PAGE_SIZE = 200;
-
 /** Per-brand → per-platform preview identity (first connected account, else brand). */
 type Identities = Record<string, Record<Platform, PreviewIdentity>>;
 
@@ -74,10 +71,12 @@ export default async function ApprovalsPage({
   });
 
   // Resolve the exact media the queue references (one org-scoped read across all
-  // brands), so each card renders the feed-accurate preview per platform.
-  const mediaAssets = (
-    await getMediaByIds(ctx, collectMediaIds(posts).slice(0, MEDIA_PAGE_SIZE))
-  ).map(toMediaAssetView);
+  // brands), so each card renders the feed-accurate preview per platform. The id
+  // set is naturally bounded by the queue itself — no artificial cap that would
+  // drop a post's own media (keyset pagination of the queue is a later follow-up).
+  const mediaAssets = (await getMediaByIds(ctx, collectMediaIds(posts))).map(
+    toMediaAssetView,
+  );
 
   // Per-platform preview identity, keyed by brand: the first connected account's
   // handle/avatar, falling back to the brand logo/name (mirrors the composer/E1).

@@ -18,7 +18,7 @@ import { buildAuditInsert, recordAuditEvent } from "./audit";
 import { getBrandById } from "./brands";
 import { getMediaByIds } from "./media";
 import { getAllowSelfApproval } from "./org-settings";
-import { assertBrandAccess, orgScope } from "./scope";
+import { assertBrandAccess, brandScope, orgScope } from "./scope";
 import type { AuthCtx } from "./types";
 
 /**
@@ -456,9 +456,16 @@ export async function listPostsForReview(
   ctx: AuthCtx,
   filter: ReviewQueueFilter,
 ): Promise<ReviewPost[]> {
-  // A selected workspace narrows within the allowlist; else the whole allowlist.
+  // A selected workspace narrows WITHIN the allowlist; a selection outside it
+  // resolves to [] (no rows) rather than replacing the allowlist — the DAL is
+  // the visibility boundary (§6), so it never trusts a caller-supplied brandId
+  // to widen past the reviewer's assignments even if the page's own check regresses.
   const brandFilter =
-    filter.brandId !== undefined ? [filter.brandId] : filter.brandIds;
+    filter.brandId !== undefined
+      ? filter.brandIds.includes(filter.brandId)
+        ? [filter.brandId]
+        : []
+      : filter.brandIds;
   const rows = await db
     .select({
       id: posts.id,
@@ -484,6 +491,10 @@ export async function listPostsForReview(
       and(
         orgScope(ctx, posts),
         inArray(posts.brandId, brandFilter),
+        // Defense-in-depth (§6.4), symmetric with listSocialAccountsForBrands:
+        // a creator reaching this read-only surface can never see a brand
+        // outside their assignments even if a stale id slips into the allowlist.
+        brandScope(ctx, posts.brandId),
         inArray(posts.status, ["IN_REVIEW", "CLIENT_REVIEW"]),
       ),
     )

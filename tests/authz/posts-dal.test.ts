@@ -443,6 +443,17 @@ describe("listPostsForReview — cross-brand review queue (E2)", () => {
     expect(params).not.toContain("brand_1");
   });
 
+  it("a workspace selection OUTSIDE the allowlist yields no rows (DAL backstop)", async () => {
+    const chain = makeSelectChain(select, []);
+    const result = await listPostsForReview(adminCtx, {
+      brandIds: ["brand_1"],
+      brandId: "brand_2", // not in the allowlist — must not widen visibility
+    });
+    expect(result).toEqual([]);
+    // brandFilter resolves to [] → inArray(brand_id, []) → SQL false.
+    expect(renderedWhere(chain).params).not.toContain("brand_2");
+  });
+
   it("the brand join is org-scoped (no cross-org workspace-name leak)", async () => {
     const chain = makeSelectChain(select, []);
     await listPostsForReview(adminCtx, { brandIds: ["brand_1"] });
