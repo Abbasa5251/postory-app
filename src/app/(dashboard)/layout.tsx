@@ -11,9 +11,12 @@ import {
 import { getQueryClient } from "@/lib/query-client";
 import { recoverActiveOrg } from "@/server/auth/active-org";
 import { auth } from "@/server/auth/auth";
+import { can } from "@/server/auth/authorize";
 import { getAuthCtx } from "@/server/auth/context";
+import { listBrandIdsForMember } from "@/server/dal/brand-members";
 import { listBrands } from "@/server/dal/brands";
 import { getActiveOrgName } from "@/server/dal/org";
+import { countPendingReview } from "@/server/dal/posts";
 
 // THE server-side gate (AGENTS.md §7 — client-side guards are UX sugar):
 // no session → sign-in; no active org → recover it from the user's memberships
@@ -41,10 +44,18 @@ export default async function DashboardLayout({
   // Shell data (§5 thin layout): the gate above guarantees getAuthCtx resolves.
   // Brands feed the sidebar's brand switcher + nav (org-scoped, creator-narrowed).
   const ctx = await getAuthCtx();
-  const [brands, orgName, cookieStore] = await Promise.all([
+  // The Approvals badge counts the reviewer's pending queue (E2) — only the
+  // post:approve roles see the nav item, and the count is scoped to their
+  // brand_members assignments (same allowlist as the /approvals page).
+  const canReview = can(ctx, "post:approve");
+  const assignedBrandIds = canReview
+    ? await listBrandIdsForMember(ctx, ctx.memberId)
+    : [];
+  const [brands, orgName, cookieStore, approvalsCount] = await Promise.all([
     listBrands(ctx),
     getActiveOrgName(ctx),
     cookies(),
+    canReview ? countPendingReview(ctx, assignedBrandIds) : Promise.resolve(0),
   ]);
   const defaultOpen = cookieStore.get("sidebar_state")?.value !== "false";
 
@@ -55,6 +66,7 @@ export default async function DashboardLayout({
           brands={brands.map((b) => ({ id: b.id, name: b.name }))}
           orgName={orgName ?? "POSTORY"}
           role={ctx.role}
+          approvalsCount={approvalsCount}
         />
         <SidebarInset>
           {/* Mobile-only top bar: the desktop sidebar is always visible (mockup

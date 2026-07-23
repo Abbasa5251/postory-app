@@ -1,8 +1,10 @@
 import "server-only";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db/db";
 import { member, user } from "@/db/schemas/auth";
+import { brands } from "@/db/schemas/brands";
 import { postVersions, posts } from "@/db/schemas/posts";
+import type { Platform } from "@/lib/platforms/config";
 import type { PostContent } from "@/lib/validation/posts";
 import { parsePostContent } from "@/lib/validation/posts";
 import { ForbiddenError, NotFoundError } from "@/server/domain/errors";
@@ -16,7 +18,7 @@ import { buildAuditInsert, recordAuditEvent } from "./audit";
 import { getBrandById } from "./brands";
 import { getMediaByIds } from "./media";
 import { getAllowSelfApproval } from "./org-settings";
-import { assertBrandAccess, orgScope } from "./scope";
+import { assertBrandAccess, brandScope, orgScope } from "./scope";
 import type { AuthCtx } from "./types";
 
 /**
@@ -416,34 +418,66 @@ export async function requestChanges(
 }
 
 /**
- * Posts awaiting a decision for a brand (E1 reviewer UI): IN_REVIEW (actionable
+ * Posts awaiting a decision (E2 cross-brand review queue): IN_REVIEW (actionable
  * internally) + CLIENT_REVIEW (read-only "waiting on client" — E4 acts on it).
- * Org+brand scoped; hydrates each post's current-version content + author name
- * for the queue card. E2 owns filters + the cross-brand "needs my approval"
- * view; this is deliberately the single-brand list.
+ * Hydrates each post's current-version content, author name, and brand name for
+ * the queue card.
+ *
+ * Scoping is an explicit brand-id **allowlist** (`filter.brandIds`), not
+ * `ctx.brandIds`: the /approvals surface is limited to owner/admin/approver (all
+ * `ctx.brandIds === "all"`), and the E2 decision scopes reviewer visibility to
+ * the member's `brand_members` assignments regardless of role. The page resolves
+ * that allowlist (listBrandIdsForMember) and passes it here; an empty allowlist
+ * yields no rows (drizzle `inArray(col, [])` → SQL false). `orgScope` stays as
+ * belt-and-suspenders tenancy on top. `filter.brandId` narrows to one selected
+ * workspace (validated ⊂ allowlist by the page); `filter.platform` filters by a
+ * targeted platform.
  */
 export type ReviewPost = {
   id: string;
+  brandId: string;
+  brandName: string;
   status: PostStatus;
   content: PostContent | null;
   createdAt: Date;
   createdByName: string | null;
 };
 
+export type ReviewQueueFilter = {
+  /** The reviewer's approvable brands (allowlist). Empty → no results. */
+  brandIds: string[];
+  /** Optional single-workspace selection (must be within `brandIds`). */
+  brandId?: string;
+  /** Optional target-platform filter (matched against content.targets). */
+  platform?: Platform;
+};
+
 export async function listPostsForReview(
   ctx: AuthCtx,
-  brandId: string,
+  filter: ReviewQueueFilter,
 ): Promise<ReviewPost[]> {
-  assertBrandAccess(ctx, brandId);
+  // A selected workspace narrows WITHIN the allowlist; a selection outside it
+  // resolves to [] (no rows) rather than replacing the allowlist — the DAL is
+  // the visibility boundary (§6), so it never trusts a caller-supplied brandId
+  // to widen past the reviewer's assignments even if the page's own check regresses.
+  const brandFilter =
+    filter.brandId !== undefined
+      ? filter.brandIds.includes(filter.brandId)
+        ? [filter.brandId]
+        : []
+      : filter.brandIds;
   const rows = await db
     .select({
       id: posts.id,
+      brandId: posts.brandId,
+      brandName: brands.name,
       status: posts.status,
       content: postVersions.content,
       createdAt: posts.createdAt,
       createdByName: user.name,
     })
     .from(posts)
+    .innerJoin(brands, and(orgScope(ctx, brands), eq(brands.id, posts.brandId)))
     .leftJoin(
       postVersions,
       and(
@@ -456,17 +490,59 @@ export async function listPostsForReview(
     .where(
       and(
         orgScope(ctx, posts),
-        eq(posts.brandId, brandId),
+        inArray(posts.brandId, brandFilter),
+        // Defense-in-depth (§6.4), symmetric with listSocialAccountsForBrands:
+        // a creator reaching this read-only surface can never see a brand
+        // outside their assignments even if a stale id slips into the allowlist.
+        brandScope(ctx, posts.brandId),
         inArray(posts.status, ["IN_REVIEW", "CLIENT_REVIEW"]),
       ),
     )
     .orderBy(desc(posts.createdAt));
-  return rows.map((r) => ({
-    id: r.id,
-    // Cast: the posts_status_check CHECK guarantees a PostStatus token.
-    status: r.status as PostStatus,
-    content: r.content == null ? null : parsePostContent(r.content),
-    createdAt: r.createdAt,
-    createdByName: r.createdByName,
-  }));
+  return (
+    rows
+      .map((r) => ({
+        id: r.id,
+        brandId: r.brandId,
+        brandName: r.brandName,
+        // Cast: the posts_status_check CHECK guarantees a PostStatus token.
+        status: r.status as PostStatus,
+        content: r.content == null ? null : parsePostContent(r.content),
+        createdAt: r.createdAt,
+        createdByName: r.createdByName,
+      }))
+      // Platform filter in JS (content.targets lives in the parsed JSONB). Applied
+      // here so the caller's count/empty-state reflects the filtered set.
+      .filter(
+        (r) =>
+          filter.platform === undefined ||
+          (r.content?.targets.includes(filter.platform) ?? false),
+      )
+  );
+}
+
+/**
+ * How many posts sit in the reviewer's queue (E2 sidebar badge): IN_REVIEW +
+ * CLIENT_REVIEW within the given brand allowlist. Same scoping as
+ * listPostsForReview (orgScope + the allowlist + brandScope defense-in-depth);
+ * an empty allowlist → 0 (drizzle `inArray(col, [])` → SQL false). A cheap
+ * indexed count for the shell — no joins, no content hydration.
+ */
+export async function countPendingReview(
+  ctx: AuthCtx,
+  brandIds: string[],
+): Promise<number> {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(posts)
+    .where(
+      and(
+        orgScope(ctx, posts),
+        inArray(posts.brandId, brandIds),
+        brandScope(ctx, posts.brandId),
+        inArray(posts.status, ["IN_REVIEW", "CLIENT_REVIEW"]),
+      ),
+    );
+  // count(*) returns a bigint string on the wire — coerce to number.
+  return Number(row?.n ?? 0);
 }

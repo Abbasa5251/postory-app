@@ -26,6 +26,7 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
@@ -40,7 +41,6 @@ const BRAND_NAV: { section: string; label: string; icon: LucideIcon }[] = [
   { section: "calendar", label: "Calendar", icon: Calendar },
   { section: "posts", label: "Posts", icon: FileText },
   { section: "composer", label: "Composer", icon: PenSquare },
-  { section: "approvals", label: "Approvals", icon: CheckCircle2 },
   { section: "analytics", label: "Analytics", icon: BarChart3 },
   { section: "accounts", label: "Connections", icon: Link2 },
   { section: "media", label: "Media library", icon: ImageIcon },
@@ -72,10 +72,13 @@ export function AppSidebar({
   brands,
   orgName,
   role,
+  approvalsCount = 0,
 }: {
   brands: BrandSummary[];
   orgName: string;
   role: Role;
+  /** Pending review queue count (E2 badge); 0 hides the badge. */
+  approvalsCount?: number;
 }) {
   const { pathname, activeBrandId, section } = useBrandContext(brands);
 
@@ -123,6 +126,30 @@ export function AppSidebar({
         {(role === "owner" || role === "admin" || role === "approver") && (
           <>
             <SidebarSeparator />
+
+            {/* Cross-brand reviewer surface (E2) — not brand-scoped, so it lives
+                outside BRAND_NAV; limited to the post:approve roles. */}
+            <SidebarGroup>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    isActive={pathname.startsWith("/approvals")}
+                    tooltip="Approvals"
+                    render={<Link href="/approvals" />}
+                  >
+                    <CheckCircle2 />
+                    <span>Approvals</span>
+                  </SidebarMenuButton>
+                  {approvalsCount > 0 && (
+                    // Amber "pending" pill to match the postory-design nav badge
+                    // (same status-pending tokens as the review-queue pills, §4).
+                    <SidebarMenuBadge className="rounded-full bg-status-pending font-bold text-status-pending-foreground">
+                      {approvalsCount}
+                    </SidebarMenuBadge>
+                  )}
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroup>
 
             <SidebarGroup>
               <SidebarGroupLabel>Agency</SidebarGroupLabel>

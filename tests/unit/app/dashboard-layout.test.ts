@@ -36,6 +36,12 @@ vi.mock("@/server/auth/active-org", () => ({ recoverActiveOrg }));
 vi.mock("@/server/auth/context", () => ({ getAuthCtx }));
 vi.mock("@/server/dal/brands", () => ({ listBrands }));
 vi.mock("@/server/dal/org", () => ({ getActiveOrgName }));
+vi.mock("@/server/dal/brand-members", () => ({
+  listBrandIdsForMember: vi.fn(async () => []),
+}));
+vi.mock("@/server/dal/posts", () => ({
+  countPendingReview: vi.fn(async () => 0),
+}));
 vi.mock("@/components/features/shell/app-sidebar", () => ({
   AppSidebar: () => null,
 }));

@@ -6,6 +6,7 @@ import {
   getZernioProfileByBrand,
   insertSocialAccount,
   listSocialAccounts,
+  listSocialAccountsForBrands,
   syncSocialAccount,
 } from "@/server/dal/accounts";
 import { NotFoundError } from "@/server/domain/errors";
@@ -53,6 +54,31 @@ describe("accounts DAL — org scoping is structurally present", () => {
     expect(sql).toContain("org_id");
     expect(params).toContain("org_1");
     expect(params).toContain("brand_1");
+  });
+
+  it("listSocialAccountsForBrands scopes org_id + brand ids; empty arg → no query", async () => {
+    const chain = makeSelectChain(select, []);
+    await listSocialAccountsForBrands(adminCtx, ["brand_1", "brand_2"]);
+    const { sql, params } = renderedWhere(chain);
+    expect(sql).toContain("org_id");
+    expect(params).toContain("org_1");
+    expect(params).toEqual(expect.arrayContaining(["brand_1", "brand_2"]));
+
+    // Empty input short-circuits without touching the db.
+    select.mockClear();
+    const result = await listSocialAccountsForBrands(adminCtx, []);
+    expect(result).toEqual([]);
+    expect(select).not.toHaveBeenCalled();
+  });
+
+  it("listSocialAccountsForBrands applies brandScope for a creator (defense in depth)", async () => {
+    // A creator assigned only to brand_1 requesting brand_2: brandScope injects
+    // the creator's assignment, so the AND with the requested list matches nothing.
+    const chain = makeSelectChain(select, []);
+    await listSocialAccountsForBrands(memberCtx(), ["brand_2"]);
+    const { params } = renderedWhere(chain);
+    expect(params).toContain("brand_2"); // requested id
+    expect(params).toContain("brand_1"); // brandScope narrowing to the assignment
   });
 
   it("getZernioProfileByBrand filters on org_id = ctx.orgId", async () => {

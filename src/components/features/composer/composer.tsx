@@ -269,7 +269,8 @@ export function Composer({
         return;
       }
       toast.success("Submitted for approval.");
-      router.push(`/brands/${brandId}/approvals`);
+      // E2: the review queue is a top-level cross-brand route.
+      router.push("/approvals");
     } catch {
       toast.error("Something went wrong. Please try again.");
     } finally {

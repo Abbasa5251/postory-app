@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   approvePost,
+  countPendingReview,
   createDraft,
   getDraftById,
   listPostsForReview,
@@ -412,21 +413,96 @@ describe("requestChanges — IN_REVIEW → CHANGES_REQUESTED, org-scoped + audit
   });
 });
 
-describe("listPostsForReview — org+brand scoped review queue", () => {
-  it("filters on org_id and the brand id", async () => {
+describe("listPostsForReview — cross-brand review queue (E2)", () => {
+  it("scopes to org_id and the brand allowlist, not org-wide", async () => {
     const chain = makeSelectChain(select, []);
-    await listPostsForReview(adminCtx, "brand_1");
+    await listPostsForReview(adminCtx, { brandIds: ["brand_1"] });
     const { sql, params } = renderedWhere(chain);
     expect(sql).toContain("org_id");
     expect(params).toContain("org_1");
     expect(params).toContain("brand_1");
+    // An admin assigned only to brand_1 must NOT silently see another brand.
+    expect(params).not.toContain("brand_2");
   });
 
-  it("404s (via brand access) on an unassigned brand for a creator", async () => {
-    makeSelectChain(select, []);
-    await expect(
-      listPostsForReview(memberCtx(), "brand_2"),
-    ).rejects.toBeInstanceOf(NotFoundError);
+  it("an empty allowlist yields no rows, still org-scoped", async () => {
+    const chain = makeSelectChain(select, []);
+    const result = await listPostsForReview(adminCtx, { brandIds: [] });
+    expect(result).toEqual([]);
+    // inArray(brand_id, []) renders SQL false (scope.ts contract); org scope holds.
+    expect(renderedWhere(chain).sql).toContain("org_id");
+  });
+
+  it("a selected workspace narrows within the allowlist", async () => {
+    const chain = makeSelectChain(select, []);
+    await listPostsForReview(adminCtx, {
+      brandIds: ["brand_1", "brand_2"],
+      brandId: "brand_2",
+    });
+    const { params } = renderedWhere(chain);
+    expect(params).toContain("brand_2");
+    expect(params).not.toContain("brand_1");
+  });
+
+  it("a workspace selection OUTSIDE the allowlist yields no rows (DAL backstop)", async () => {
+    const chain = makeSelectChain(select, []);
+    const result = await listPostsForReview(adminCtx, {
+      brandIds: ["brand_1"],
+      brandId: "brand_2", // not in the allowlist — must not widen visibility
+    });
+    expect(result).toEqual([]);
+    // brandFilter resolves to [] → inArray(brand_id, []) → SQL false.
+    expect(renderedWhere(chain).params).not.toContain("brand_2");
+  });
+
+  it("the brand join is org-scoped (no cross-org workspace-name leak)", async () => {
+    const chain = makeSelectChain(select, []);
+    await listPostsForReview(adminCtx, { brandIds: ["brand_1"] });
+    const joinCond = renderedSql(chain.innerJoin.mock.calls[0]![1] as SQL);
+    expect(joinCond.sql).toContain("org_id");
+    expect(joinCond.params).toContain("org_1");
+  });
+
+  it("countPendingReview scopes to org_id + allowlist + review statuses", async () => {
+    const chain = makeSelectChain(select, [{ n: 2 }]);
+    const n = await countPendingReview(adminCtx, ["brand_1"]);
+    expect(n).toBe(2);
+    const { sql, params } = renderedWhere(chain);
+    expect(sql).toContain("org_id");
+    expect(params).toContain("org_1");
+    expect(params).toContain("brand_1");
+    expect(params).toContain("IN_REVIEW");
+    expect(params).toContain("CLIENT_REVIEW");
+  });
+
+  it("countPendingReview with an empty allowlist → 0, still org-scoped", async () => {
+    const chain = makeSelectChain(select, [{ n: 0 }]);
+    expect(await countPendingReview(adminCtx, [])).toBe(0);
+    expect(renderedWhere(chain).sql).toContain("org_id");
+  });
+
+  it("the platform filter keeps only posts targeting that platform", async () => {
+    const reviewRow = (id: string, platform: "instagram" | "facebook") => ({
+      id,
+      brandId: "brand_1",
+      brandName: "Brand One",
+      status: "IN_REVIEW",
+      content: {
+        targets: [platform],
+        variants: { [platform]: { caption: "c" } },
+      },
+      createdAt: new Date(0),
+      createdByName: "Someone",
+    });
+    makeSelectChain(select, [
+      reviewRow("p_ig", "instagram"),
+      reviewRow("p_fb", "facebook"),
+    ]);
+    const result = await listPostsForReview(adminCtx, {
+      brandIds: ["brand_1"],
+      platform: "facebook",
+    });
+    expect(result.map((r) => r.id)).toEqual(["p_fb"]);
   });
 });
 
