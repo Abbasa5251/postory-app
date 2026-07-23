@@ -168,17 +168,28 @@ export async function putObject(
   const { aws, endpoint, bucket, region } = getStorageClient();
   const url = `${endpoint}/${bucket}/${encodeKey(key)}`;
 
+  // Copy into a fresh ArrayBuffer-backed view: the AI SDK returns
+  // `Uint8Array<ArrayBufferLike>`, which doesn't satisfy `BodyInit` (its buffer
+  // could be a SharedArrayBuffer). One small copy in a background job.
+  const body = new Uint8Array(bytes);
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PUT_TIMEOUT_MS);
   let res: Response;
   try {
     res = await aws.fetch(url, {
       method: "PUT",
-      // Copy into a fresh ArrayBuffer-backed view: the AI SDK returns
-      // `Uint8Array<ArrayBufferLike>`, which doesn't satisfy `BodyInit` (its
-      // buffer could be a SharedArrayBuffer). One small copy in a background job.
-      body: new Uint8Array(bytes),
-      headers: { "content-type": contentType },
+      body,
+      // Content-Length is REQUIRED: aws4fetch lists it as unsignable and never
+      // sets it, so undici would stream the byte body with chunked
+      // transfer-encoding — which MinIO/R2 reject on PUT with 411 (Length
+      // Required). Set it explicitly to the exact body length so the request
+      // carries a fixed length (the C4 browser upload gets this for free from
+      // XHR; the server path must set it itself).
+      headers: {
+        "content-type": contentType,
+        "content-length": String(body.byteLength),
+      },
       signal: controller.signal,
       aws: { service: "s3", region },
     });
