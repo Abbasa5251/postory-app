@@ -8,9 +8,12 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PLATFORM_LIST } from "@/lib/platforms/config";
 import { emptyPostContent } from "@/lib/validation/posts";
+import { can } from "@/server/auth/authorize";
 import { listApprovalsForPost } from "@/server/dal/approvals";
 import { listSocialAccounts } from "@/server/dal/accounts";
+import { listCommentsForPost, type CommentView } from "@/server/dal/comments";
 import { listMediaForBrand } from "@/server/dal/media";
+import { listOrgMembers } from "@/server/dal/org";
 import { getDraftById } from "@/server/dal/posts";
 import { NotFoundError } from "@/server/domain/errors";
 import { publicUrl } from "@/server/services/storage";
@@ -96,6 +99,10 @@ export default async function ComposerPage({
   // are locked here.
   let initial;
   let changeRequest: { note: string | null; by: string | null } | null = null;
+  // E3: a saved post carries a comment thread + the org member list (mention
+  // typeahead). Loaded only in edit mode — a brand-new draft has no post yet.
+  let comments: CommentView[] = [];
+  let members: { id: string; name: string }[] = [];
   if (postId) {
     // A malformed id would reach getDraftById's uuid column and throw a DB
     // error, not a NotFoundError — treat it as a not-found (404) before the query.
@@ -122,6 +129,11 @@ export default async function ComposerPage({
         changeRequest = { note: latest.note, by: latest.decidedByName };
       }
     }
+    comments = await listCommentsForPost(ctx, draft.id);
+    members = (await listOrgMembers(ctx)).map((m) => ({
+      id: m.id,
+      name: m.name,
+    }));
   }
 
   return (
@@ -137,6 +149,9 @@ export default async function ComposerPage({
       libraryAssets={libraryAssets}
       brandLogoUrl={brand.logoUrl}
       changeRequest={changeRequest}
+      comments={comments}
+      members={members}
+      canComment={can(ctx, "post:create")}
     />
   );
 }

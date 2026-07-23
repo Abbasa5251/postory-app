@@ -17,8 +17,11 @@ import { useActionForm } from "@/hooks/use-action-form";
 import { PLATFORM_CONFIG, type Platform } from "@/lib/platforms/config";
 import { resolveMediaAssets } from "@/lib/platforms/preview";
 import { cn } from "@/lib/utils";
+import type { CommentView } from "@/server/dal/comments";
 import type { ReviewPost } from "@/server/dal/posts";
 import { approvePost, requestChanges } from "@/server/actions/posts";
+import { CommentThread } from "../comments/comment-thread";
+import type { MentionMember } from "../comments/mention-textarea";
 import type { MediaAssetView } from "../composer/media-types";
 import { PostPreview, type PreviewIdentity } from "../composer/post-preview";
 
@@ -83,11 +86,17 @@ export function ReviewQueue({
   posts,
   mediaAssets,
   identities,
+  commentsByPost,
+  members,
+  canComment,
   canApprove,
 }: {
   posts: ReviewPost[];
   mediaAssets: MediaAssetView[];
   identities: Identities;
+  commentsByPost: Record<string, CommentView[]>;
+  members: MentionMember[];
+  canComment: boolean;
   canApprove: boolean;
 }) {
   return (
@@ -98,6 +107,9 @@ export function ReviewQueue({
           post={post}
           mediaAssets={mediaAssets}
           identities={identities}
+          comments={commentsByPost[post.id] ?? []}
+          members={members}
+          canComment={canComment}
           canApprove={canApprove}
         />
       ))}
@@ -109,11 +121,17 @@ function ReviewRow({
   post,
   mediaAssets,
   identities,
+  comments,
+  members,
+  canComment,
   canApprove,
 }: {
   post: ReviewPost;
   mediaAssets: MediaAssetView[];
   identities: Identities;
+  comments: CommentView[];
+  members: MentionMember[];
+  canComment: boolean;
   canApprove: boolean;
 }) {
   const router = useRouter();
@@ -208,6 +226,9 @@ function ReviewRow({
             post={post}
             mediaAssets={mediaAssets}
             identities={identities}
+            comments={comments}
+            members={members}
+            canComment={canComment}
           />
           {canAct ? (
             <DialogFooter>
@@ -299,10 +320,16 @@ function ReviewModalBody({
   post,
   mediaAssets,
   identities,
+  comments,
+  members,
+  canComment,
 }: {
   post: ReviewPost;
   mediaAssets: MediaAssetView[];
   identities: Identities;
+  comments: CommentView[];
+  members: MentionMember[];
+  canComment: boolean;
 }) {
   const targets = post.content?.targets ?? [];
   const [tab, setTab] = useState<Platform | undefined>(targets[0]);
@@ -360,6 +387,16 @@ function ReviewModalBody({
             </TabsContent>
           );
         })}
+        {/* Post-level discussion (outside TabsContent so it shows on every
+            tab) — E3 comments + @mentions + resolve. */}
+        <div className="mt-6 border-t pt-4">
+          <CommentThread
+            postId={post.id}
+            comments={comments}
+            members={members}
+            canComment={canComment}
+          />
+        </div>
       </div>
     </Tabs>
   );

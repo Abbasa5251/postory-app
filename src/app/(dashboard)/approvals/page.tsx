@@ -12,7 +12,9 @@ import { can } from "@/server/auth/authorize";
 import { listSocialAccountsForBrands } from "@/server/dal/accounts";
 import { listBrandIdsForMember } from "@/server/dal/brand-members";
 import { listBrands } from "@/server/dal/brands";
+import { listCommentsForPosts, type CommentView } from "@/server/dal/comments";
 import { getMediaByIds } from "@/server/dal/media";
+import { listOrgMembers } from "@/server/dal/org";
 import { listPostsForReview, type ReviewPost } from "@/server/dal/posts";
 import { toMediaAssetView } from "@/server/media-views";
 
@@ -110,6 +112,19 @@ export default async function ApprovalsPage({
     identities[brandId] = perPlatform;
   }
 
+  // E3: each queued post's comments (one batch read) + the org member list for
+  // the mention typeahead. Reviewers hold post:create, so they can comment.
+  const commentsMap = await listCommentsForPosts(
+    ctx,
+    posts.map((p) => p.id),
+  );
+  const commentsByPost: Record<string, CommentView[]> = {};
+  for (const [postId, list] of commentsMap) commentsByPost[postId] = list;
+  const members = (await listOrgMembers(ctx)).map((m) => ({
+    id: m.id,
+    name: m.name,
+  }));
+
   const count = posts.length;
   return (
     <div className="flex flex-col gap-6">
@@ -149,6 +164,9 @@ export default async function ApprovalsPage({
           posts={posts}
           mediaAssets={mediaAssets}
           identities={identities}
+          commentsByPost={commentsByPost}
+          members={members}
+          canComment={can(ctx, "post:create")}
           // Always true past the page gate above; the mutating actions
           // (approvePost/requestChanges) still re-enforce post:approve server-side.
           canApprove={canApprove}
