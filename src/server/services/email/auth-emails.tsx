@@ -4,23 +4,7 @@ import {
   OrganizationInvitationEmail,
   ResetPasswordEmail,
 } from "@better-auth-ui/react/email";
-import { EMAIL_FROM, resend } from "./client";
-
-const APP_NAME = "POSTORY";
-
-async function send(to: string, subject: string, react: React.ReactNode) {
-  const { error } = await resend.emails.send({
-    from: EMAIL_FROM,
-    to,
-    subject,
-    react,
-  });
-  // Throw so better-auth surfaces the failure to the caller instead of
-  // silently "sending" a verification/reset link that never arrives.
-  if (error) {
-    throw new Error(`Failed to send "${subject}" email: ${error.message}`);
-  }
-}
+import { APP_NAME, send } from "./send";
 
 export async function sendVerificationEmail(input: {
   to: string;
