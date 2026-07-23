@@ -85,9 +85,10 @@ _Avoid_: copy (copy is the AI-generation act), body, text, description.
 **Media Asset**:
 An image or video belonging to a Brand (`media_assets`), stored in the object
 store (R2 in prod, MinIO in dev) under an `org/{orgId}/brand/{brandId}/…` key.
-Has a **kind** (image/video) and a **source** (upload now — C4; generated
-later — Epic D). Uploaded via a presigned direct-to-store PUT, then confirmed by
-a server HEAD (the authoritative mime/size gate). Attached to a Post **per
+Has a **kind** (image/video) and a **source** — **upload** (C4: presigned
+direct-to-store PUT, confirmed by a server HEAD, the authoritative mime/size
+gate) or **generated** (D2: an AI image the Inngest job PUTs to the store and
+records with its source model + Generation Job id). Attached to a Post **per
 Platform** (`content.variants[platform].mediaIds`); the flat union lands in
 `post_versions.media_ids`. Starts moderation `pending` (D5 gates it before
 publish).
@@ -119,9 +120,20 @@ instruction. All generation runs in an Inngest job, never a request handler
 (ADR-003); tokens stream to the Composer over Inngest realtime.
 _Avoid_: caption (a caption is the stored text; "copy" is the generation act), completion, prompt (the prompt is an input to generation).
 
+**AI Image**:
+The act of generating an image with AI (D1–D3): a Member writes a **prompt**
+(optionally seeded from the Caption) and picks a **tier** (standard / premium —
+maps to the `image_standard` / `image_premium` credit rate) + an **aspect
+preset** (1:1, 4:5, 9:16, 16:9); the OpenRouter Image API returns 2–4 variant
+images. The Inngest job fans out one call per variant, stores each in the object
+store, and records a generated Media Asset — a chosen variant attaches to the
+Post through the same seam as an upload. Brand style (Voice Profile tone) seasons
+the prompt. Moderation is deferred (D5).
+_Avoid_: picture, graphic, render (the run is a Generation Job; the output is a Media Asset).
+
 **Generation Job**:
-One AI generation run (`generation_jobs` row) — type copy now, image/video later
-(D). Moves queued → running → succeeded | failed. Records the model id, the
+One AI generation run (`generation_jobs` row) — type copy or image now (video is
+D7). Moves queued → running → succeeded | failed. Records the model id, the
 credits reserved, and the credits settled; the Credit Ledger stays the source of
 truth for spend.
 _Avoid_: task, request, generation (ambiguous — this is the tracked run).

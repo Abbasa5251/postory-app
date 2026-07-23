@@ -5,6 +5,9 @@ import {
   getCharLimit,
   getMediaSpec,
   getPlatformConfig,
+  IMAGE_ASPECT_PRESET_IDS,
+  IMAGE_ASPECT_PRESETS,
+  imagePresetsForPlatform,
   isPlatform,
   maxUploadBytesForKind,
   mediaKindForMime,
@@ -156,5 +159,35 @@ describe("assetFitsPlatform (C4 advisory)", () => {
       mimeType: "image/jpeg",
     });
     expect(fit.ok).toBe(true);
+  });
+});
+
+describe("image aspect presets (D1)", () => {
+  it("exposes exactly the four PRD presets, ids in `${w}:${h}` form", () => {
+    expect(IMAGE_ASPECT_PRESETS.map((p) => p.id)).toEqual([
+      "1:1",
+      "4:5",
+      "9:16",
+      "16:9",
+    ]);
+    expect(IMAGE_ASPECT_PRESET_IDS).toEqual(["1:1", "4:5", "9:16", "16:9"]);
+  });
+
+  it("recommends a platform's allowed image ratios (Instagram: 1:1, 4:5)", () => {
+    expect(imagePresetsForPlatform("instagram")).toEqual(["1:1", "4:5"]);
+  });
+
+  it("recommends all presets when a platform accepts any ratio (Threads)", () => {
+    expect(imagePresetsForPlatform("threads")).toEqual([
+      "1:1",
+      "4:5",
+      "9:16",
+      "16:9",
+    ]);
+  });
+
+  it("recommends none for a video-only platform (TikTok has no image spec)", () => {
+    expect(imagePresetsForPlatform("tiktok")).toEqual([]);
+    expect(imagePresetsForPlatform("youtube")).toEqual([]);
   });
 });

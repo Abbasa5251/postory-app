@@ -227,6 +227,48 @@ export const PLATFORM_LIST: readonly PlatformConfig[] = PLATFORMS.map(
   (id) => PLATFORM_CONFIG[id],
 );
 
+/**
+ * The image aspect presets offered by AI image generation (D1, PRD §D1:
+ * 1:1, 4:5, 9:16, 16:9). Ordered for the composer's preset picker. The `id` is
+ * also exactly the `${w}:${h}` string the OpenRouter Image API / AI SDK
+ * `generateImage` `aspectRatio` param expects, so it doubles as the wire value.
+ * Reuses the shared ratio constants above (single source — §4).
+ */
+export const IMAGE_ASPECT_PRESETS = [
+  { id: "1:1", label: "Square", ratio: SQUARE },
+  { id: "4:5", label: "Portrait", ratio: PORTRAIT_4_5 },
+  { id: "9:16", label: "Vertical", ratio: VERTICAL_9_16 },
+  { id: "16:9", label: "Landscape", ratio: LANDSCAPE_16_9 },
+] as const;
+
+/** A supported image aspect preset id (also the wire `aspectRatio` value). */
+export type ImageAspectPreset = (typeof IMAGE_ASPECT_PRESETS)[number]["id"];
+
+/** All preset ids, for the validation enum + UI iteration. */
+export const IMAGE_ASPECT_PRESET_IDS = IMAGE_ASPECT_PRESETS.map(
+  (p) => p.id,
+) as [ImageAspectPreset, ...ImageAspectPreset[]];
+
+/**
+ * Which image aspect presets a platform prefers (D1 preset picker). Empty
+ * `aspectRatios` = any ratio, so all presets apply; a platform with no image
+ * spec (TikTok/YouTube = video-only) returns none. Advisory only — it seeds the
+ * recommended presets in the UI, the same way `assetFitsPlatform` is advisory.
+ */
+export function imagePresetsForPlatform(
+  platform: Platform,
+): readonly ImageAspectPreset[] {
+  const spec = PLATFORM_CONFIG[platform].media.image;
+  if (!spec) return [];
+  if (spec.aspectRatios.length === 0)
+    return IMAGE_ASPECT_PRESETS.map((p) => p.id);
+  return IMAGE_ASPECT_PRESETS.filter((preset) =>
+    spec.aspectRatios.some(
+      ([w, h]) => w === preset.ratio[0] && h === preset.ratio[1],
+    ),
+  ).map((p) => p.id);
+}
+
 /** Type guard: is an arbitrary string one of our launch platforms? */
 export function isPlatform(value: string): value is Platform {
   return (PLATFORMS as readonly string[]).includes(value);

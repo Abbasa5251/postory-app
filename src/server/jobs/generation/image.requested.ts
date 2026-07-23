@@ -1,0 +1,213 @@
+import "server-only";
+import { getSystemCtx } from "@/server/auth/context";
+import { imageChannel } from "@/lib/realtime/image-channel";
+import {
+  getBalance,
+  outstandingReservation,
+  refundCredits,
+  reserveCredits,
+} from "@/server/dal/credits";
+import { completeJob, getById, startJob } from "@/server/dal/generation-jobs";
+import { recordGeneratedAsset } from "@/server/dal/media";
+import {
+  assertSufficientBalance,
+  refundOnSettle,
+} from "@/server/domain/credits";
+import { buildImagePrompt } from "@/server/domain/image-prompt";
+import { generateImages } from "@/server/services/openrouter";
+import {
+  buildMediaKey,
+  extForMediaType,
+  publicUrl,
+  putObject,
+} from "@/server/services/storage";
+import { inngest } from "../client";
+import { imageRequestedEvent } from "../events";
+
+const JOB_NAME = "generation/image.requested";
+
+/**
+ * A generated image the client can attach — the composer's MediaAssetView
+ * shape, matching the imageChannel `asset` schema.
+ */
+type GeneratedAssetView = {
+  id: string;
+  kind: "image";
+  url: string;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  width: number | null;
+  height: number | null;
+  durationSeconds: number | null;
+  moderationStatus: string;
+};
+
+/**
+ * AI image generation (D2, ADR-003/-005/-007/-012). Reserve N credits (one per
+ * variant) BEFORE the first OpenRouter call (§8), generate each variant in
+ * parallel (one memoized step each so retries never re-charge or re-generate a
+ * completed variant), store the base64 bytes in R2, record a
+ * `media_assets` row (`source='generated'`), then settle: charge only the
+ * variants that succeeded and refund the rest (failed generations are unbilled
+ * by OpenRouter → refund, ADR-012). A single variant's failure is caught in-band
+ * (partial success) and does NOT fail the whole job. `onFailure` is the crash
+ * safety-net: it refunds the LEDGER-derived remaining reservation exactly once
+ * (idempotent — a re-run recomputes 0), mirroring C2/C3. The DB-level
+ * partial-unique guard on the refund row is deferred to H4 (needs a migration).
+ *
+ * Moderation is deferred to D5 (founder call): assets land moderationStatus
+ * 'pending', un-gated, exactly like C4 uploads.
+ */
+export const generateImageJob = inngest.createFunction(
+  {
+    id: "generation-image",
+    retries: 1,
+    concurrency: { key: "event.data.orgId", limit: 3 },
+    triggers: [imageRequestedEvent],
+    onFailure: async ({ event, step }) => {
+      const d = event.data.event.data;
+      const ctx = getSystemCtx(d.orgId, JOB_NAME);
+      const finalized = await step.run("refund-on-failure", async () => {
+        const job = await getById(ctx, d.jobId);
+        if (job.status === "succeeded" || job.status === "failed") return false;
+        const owed = await outstandingReservation(ctx, d.jobId);
+        await refundCredits(ctx, { jobId: d.jobId, credits: owed });
+        await completeJob(ctx, d.jobId, {
+          status: "failed",
+          creditsSettled: 0,
+          error: "image generation failed",
+        });
+        return true;
+      });
+      if (finalized) {
+        await step.realtime.publish(
+          "publish-error",
+          imageChannel(d.jobId).error,
+          { message: "Image generation failed — your credits were refunded." },
+        );
+      }
+    },
+  },
+  async ({ event, step }) => {
+    const d = event.data;
+    const ctx = getSystemCtx(d.orgId, JOB_NAME);
+    const total = d.creditsPerImage * d.variantCount;
+
+    // Reserve the full N credits BEFORE any OpenRouter call (§8). Balance was
+    // fast-checked in the action; re-check here (authoritative) so a balance
+    // drained between enqueue and run can't overspend.
+    await step.run("reserve", async () => {
+      const balance = await getBalance(ctx);
+      assertSufficientBalance(balance, total);
+      await reserveCredits(ctx, { jobId: d.jobId, credits: total });
+    });
+    await step.run("start", () =>
+      startJob(ctx, d.jobId, { creditsReserved: total }),
+    );
+
+    // Assemble the final prompt once (pure) — the same prompt seeds every
+    // variant; diversity comes from the model, not the prompt (domain/image-prompt).
+    const prompt = buildImagePrompt({
+      prompt: d.prompt,
+      brandStyle: d.voiceProfile,
+      platform: d.platform,
+    });
+
+    // Generate each variant independently and in parallel. One memoized step per
+    // variant → a function retry never re-generates a completed variant. Any
+    // failure in the step (OpenRouter error, storage/record failure) is caught
+    // here (partial success): that variant's credit is refunded at settle. A
+    // generated-but-not-stored image is a rare orphan (D4 cleanup) — we still
+    // refund since the asset never became usable.
+    const results = await Promise.all(
+      Array.from({ length: d.variantCount }, (_unused, i) => i).map((index) =>
+        step.run(`variant-${index}`, async () => {
+          let asset: GeneratedAssetView;
+          try {
+            const [image] = await generateImages({
+              modelId: d.modelId,
+              prompt,
+              aspectRatio: d.aspectRatio,
+              n: 1,
+            });
+            if (!image)
+              return { ok: false as const, error: "no image returned" };
+
+            const key = buildMediaKey(
+              ctx.orgId,
+              d.brandId,
+              extForMediaType(image.mediaType),
+            );
+            await putObject(key, image.bytes, image.mediaType);
+            const recorded = await recordGeneratedAsset(ctx, {
+              brandId: d.brandId,
+              r2Key: key,
+              mimeType: image.mediaType,
+              sizeBytes: image.bytes.byteLength,
+              // Authoritative pixel dims come from the D5 server probe; the
+              // chosen aspect ratio is honored by the model. Null here, like C4.
+              width: null,
+              height: null,
+              sourceModel: d.modelId,
+              generationJobId: d.jobId,
+            });
+            asset = {
+              id: recorded.id,
+              kind: "image",
+              url: publicUrl(key),
+              mimeType: recorded.mimeType,
+              sizeBytes: recorded.sizeBytes,
+              width: recorded.width,
+              height: recorded.height,
+              durationSeconds: recorded.durationSeconds,
+              moderationStatus: recorded.moderationStatus,
+            };
+          } catch (err) {
+            // Preserve the underlying reason (OpenRouter / storage / DAL) so the
+            // job's error column reports why a variant failed, not just a count.
+            return {
+              ok: false as const,
+              error: err instanceof Error ? err.message : String(err),
+            };
+          }
+          // The asset is captured in this step's DURABLE result (returned below)
+          // and re-broadcast in `done.assets`, so realtime is only the fast path.
+          // The live publish is BEST-EFFORT: a delivery failure must never fail
+          // the variant or refund an asset we actually produced.
+          try {
+            await inngest.realtime.publish(imageChannel(d.jobId).asset, asset);
+          } catch {
+            // Swallow — best-effort live delivery; the asset is durable above.
+          }
+          return { ok: true as const, asset };
+        }),
+      ),
+    );
+
+    const produced = results.flatMap((r) => (r.ok ? [r.asset] : []));
+    const failureReasons = results.flatMap((r) => (r.ok ? [] : [r.error]));
+    const failed = failureReasons.length;
+
+    // Charge only the variants that succeeded; refund the rest.
+    await step.run("settle", async () => {
+      const used = produced.length * d.creditsPerImage;
+      const refund = refundOnSettle(total, used);
+      if (refund > 0)
+        await refundCredits(ctx, { jobId: d.jobId, credits: refund });
+      await completeJob(ctx, d.jobId, {
+        status: produced.length > 0 ? "succeeded" : "failed",
+        creditsSettled: used,
+        error:
+          failed > 0
+            ? `image generation failed for ${failed} variant(s): ${[...new Set(failureReasons)].join("; ")}`
+            : undefined,
+      });
+    });
+
+    await step.realtime.publish("publish-done", imageChannel(d.jobId).done, {
+      failed,
+      assets: produced,
+    });
+    return { jobId: d.jobId, produced: produced.length, failed };
+  },
+);
