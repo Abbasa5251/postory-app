@@ -90,6 +90,12 @@ export type GeneratedImage = {
   bytes: Uint8Array;
   /** IANA media type reported by the model (e.g. `image/png`). */
   mediaType: string;
+  /**
+   * OpenRouter's request identifier for this generation (the `x-request-id`
+   * response header) — persisted on the generation job so a charge can be
+   * cross-referenced to OpenRouter's logs. `null` if the header is absent.
+   */
+  providerId: string | null;
 };
 
 /**
@@ -123,6 +129,11 @@ export async function generateImages(
     abortSignal: input.signal,
   });
 
+  // OpenRouter's request identifier (fetch-lowercased header) — persisted on
+  // the job for billing cross-reference. One response per call (we send n: 1).
+  const headers = result.responses?.[0]?.headers ?? {};
+  const providerId = headers["x-request-id"] ?? null;
+
   const allowedMimes = acceptedMimesForKind("image");
   const maxBytes = maxUploadBytesForKind("image");
   return result.images.map((image) => {
@@ -136,6 +147,6 @@ export async function generateImages(
         `Generated image exceeds the ${maxBytes}-byte limit`,
       );
     }
-    return { bytes: image.uint8Array, mediaType: image.mediaType };
+    return { bytes: image.uint8Array, mediaType: image.mediaType, providerId };
   });
 }

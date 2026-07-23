@@ -123,6 +123,7 @@ export const generateImageJob = inngest.createFunction(
       Array.from({ length: d.variantCount }, (_unused, i) => i).map((index) =>
         step.run(`variant-${index}`, async () => {
           let asset: GeneratedAssetView;
+          let providerId: string | null = null;
           try {
             const [image] = await generateImages({
               modelId: d.modelId,
@@ -132,6 +133,7 @@ export const generateImageJob = inngest.createFunction(
             });
             if (!image)
               return { ok: false as const, error: "no image returned" };
+            providerId = image.providerId;
 
             const key = buildMediaKey(
               ctx.orgId,
@@ -179,7 +181,7 @@ export const generateImageJob = inngest.createFunction(
           } catch {
             // Swallow — best-effort live delivery; the asset is durable above.
           }
-          return { ok: true as const, asset };
+          return { ok: true as const, asset, providerId };
         }),
       ),
     );
@@ -187,6 +189,12 @@ export const generateImageJob = inngest.createFunction(
     const produced = results.flatMap((r) => (r.ok ? [r.asset] : []));
     const failureReasons = results.flatMap((r) => (r.ok ? [] : [r.error]));
     const failed = failureReasons.length;
+    // Each variant is a separate OpenRouter generation, so the job records the
+    // set of provider request ids (one per produced image) for billing
+    // cross-reference — joined into the single provider_generation_id column.
+    const providerIds = results.flatMap((r) =>
+      r.ok && r.providerId ? [r.providerId] : [],
+    );
 
     // Charge only the variants that succeeded; refund the rest.
     await step.run("settle", async () => {
@@ -197,6 +205,9 @@ export const generateImageJob = inngest.createFunction(
       await completeJob(ctx, d.jobId, {
         status: produced.length > 0 ? "succeeded" : "failed",
         creditsSettled: used,
+        providerGenerationId: providerIds.length
+          ? providerIds.join(",")
+          : undefined,
         error:
           failed > 0
             ? `image generation failed for ${failed} variant(s): ${[...new Set(failureReasons)].join("; ")}`
