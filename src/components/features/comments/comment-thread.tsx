@@ -70,7 +70,11 @@ export function CommentThread({
       ) : (
         <ul className="flex flex-col gap-3">
           {comments.map((comment) => (
-            <CommentItem key={comment.id} comment={comment} />
+            <CommentItem
+              key={comment.id}
+              comment={comment}
+              canComment={canComment}
+            />
           ))}
         </ul>
       )}
@@ -107,7 +111,13 @@ export function CommentThread({
   );
 }
 
-function CommentItem({ comment }: { comment: CommentView }) {
+function CommentItem({
+  comment,
+  canComment,
+}: {
+  comment: CommentView;
+  canComment: boolean;
+}) {
   const router = useRouter();
   const resolve = useActionForm(resolveComment, {
     onSuccess: () => router.refresh(),
@@ -137,20 +147,24 @@ function CommentItem({ comment }: { comment: CommentView }) {
             Resolved
           </span>
         )}
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          disabled={resolve.pending}
-          onClick={() =>
-            void resolve.run({
-              commentId: comment.id,
-              resolved: !comment.resolved,
-            })
-          }
-        >
-          {comment.resolved ? "Reopen" : "Resolve"}
-        </Button>
+        {/* Resolve/Reopen is a mutation (post:create) — hide it from a
+            read-only viewer; the server action re-enforces regardless. */}
+        {canComment && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={resolve.pending}
+            onClick={() =>
+              void resolve.run({
+                commentId: comment.id,
+                resolved: !comment.resolved,
+              })
+            }
+          >
+            {comment.resolved ? "Reopen" : "Resolve"}
+          </Button>
+        )}
       </div>
     </li>
   );

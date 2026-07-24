@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
@@ -35,6 +35,8 @@ export function MentionTextarea({
   "aria-label"?: string;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const listboxId = useId();
+  const optionId = (i: number) => `${listboxId}-opt-${i}`;
   // The active "@query" span in the text, or null when not mentioning.
   const [query, setQuery] = useState<{ text: string; start: number } | null>(
     null,
@@ -108,6 +110,13 @@ export function MentionTextarea({
         disabled={disabled}
         placeholder={placeholder}
         aria-label={ariaLabel}
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={matches.length > 0}
+        aria-controls={listboxId}
+        aria-activedescendant={
+          matches.length > 0 ? optionId(active) : undefined
+        }
         onChange={(e) => handleChange(e.target.value)}
         onKeyDown={handleKeyDown}
         onBlur={() => {
@@ -116,11 +125,18 @@ export function MentionTextarea({
         }}
       />
       {matches.length > 0 && (
-        <ul className="absolute z-50 mt-1 max-h-48 w-56 overflow-y-auto rounded-md border bg-popover p-1 shadow-md">
+        <ul
+          id={listboxId}
+          role="listbox"
+          className="absolute z-50 mt-1 max-h-48 w-56 overflow-y-auto rounded-md border bg-popover p-1 shadow-md"
+        >
           {matches.map((m, i) => (
             <li key={m.id}>
               <button
                 type="button"
+                id={optionId(i)}
+                role="option"
+                aria-selected={i === active}
                 // onMouseDown (not onClick) so it fires before the textarea blur.
                 onMouseDown={(e) => {
                   e.preventDefault();

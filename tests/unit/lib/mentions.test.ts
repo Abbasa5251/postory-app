@@ -91,4 +91,21 @@ describe("buildBodyFromDisplay", () => {
     expect(parseMentionIds(body)).toEqual([]);
     expect(body).toBe("hi @stranger");
   });
+
+  it("does not match @Jane inside a hyphenated @Jane-Doe", () => {
+    const body = buildBodyFromDisplay("hi @Jane-Doe", [
+      { name: "Jane", memberId: ID_A },
+    ]);
+    expect(body).toBe("hi @Jane-Doe");
+    expect(parseMentionIds(body)).toEqual([]);
+  });
+
+  it("treats a name with regex replacement tokens literally (no $& expansion)", () => {
+    const body = buildBodyFromDisplay("ping @A$&B", [
+      { name: "A$&B", memberId: ID_A },
+    ]);
+    // The literal name survives; $& did not expand to the matched text.
+    expect(body).toContain("$&");
+    expect(parseMentionIds(body)).toEqual([ID_A]);
+  });
 });

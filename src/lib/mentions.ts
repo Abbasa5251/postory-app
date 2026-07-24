@@ -79,11 +79,19 @@ export function buildBodyFromDisplay(
   let body = text;
   const sorted = [...mentions].sort((a, b) => b.name.length - a.name.length);
   for (const m of sorted) {
-    // `(?!\w)` word-boundary so "@Jane" doesn't corrupt a hand-typed "@Janet";
-    // a produced marker (`@[Name]…`) can't re-match a later, shorter `@Name`
-    // pass (the bracket differs), so replacement stays stable.
-    const pattern = new RegExp(`${escapeRegExp(`@${m.name}`)}(?!\\w)`, "g");
-    body = body.replace(pattern, mentionMarker(m.name, m.memberId));
+    // Block a following name char — Unicode letter/number, `_` or `-` — so
+    // "@Jane" isn't matched inside "@Janet" or "@Jane-Doe" (ASCII `\w` would let
+    // the hyphen through), and non-ASCII names are handled. A produced marker
+    // (`@[Name]…`) can't re-match a later, shorter `@Name` pass (the bracket
+    // differs), so replacement stays stable.
+    const pattern = new RegExp(
+      `${escapeRegExp(`@${m.name}`)}(?![\\p{L}\\p{N}_-])`,
+      "gu",
+    );
+    // Replacement CALLBACK (not a string) so a display name containing `$&`,
+    // `$\``, `$'`, or `$1` can't trigger regex replacement-template expansion.
+    const marker = mentionMarker(m.name, m.memberId);
+    body = body.replace(pattern, () => marker);
   }
   return body;
 }
