@@ -87,7 +87,7 @@ export function ReviewQueue({
   mediaAssets,
   identities,
   commentsByPost,
-  members,
+  membersByBrand,
   canComment,
   canApprove,
 }: {
@@ -95,7 +95,8 @@ export function ReviewQueue({
   mediaAssets: MediaAssetView[];
   identities: Identities;
   commentsByPost: Record<string, CommentView[]>;
-  members: MentionMember[];
+  // E3 @mention picker, keyed by brand — each post offers its own brand's team.
+  membersByBrand: Record<string, MentionMember[]>;
   canComment: boolean;
   canApprove: boolean;
 }) {
@@ -108,7 +109,7 @@ export function ReviewQueue({
           mediaAssets={mediaAssets}
           identities={identities}
           comments={commentsByPost[post.id] ?? []}
-          members={members}
+          members={membersByBrand[post.brandId] ?? []}
           canComment={canComment}
           canApprove={canApprove}
         />

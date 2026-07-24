@@ -11,9 +11,9 @@ import { emptyPostContent } from "@/lib/validation/posts";
 import { can } from "@/server/auth/authorize";
 import { listApprovalsForPost } from "@/server/dal/approvals";
 import { listSocialAccounts } from "@/server/dal/accounts";
+import { listBrandMembers } from "@/server/dal/brand-members";
 import { listCommentsForPost, type CommentView } from "@/server/dal/comments";
 import { listMediaForBrand } from "@/server/dal/media";
-import { listOrgMembers } from "@/server/dal/org";
 import { getDraftById } from "@/server/dal/posts";
 import { NotFoundError } from "@/server/domain/errors";
 import { publicUrl } from "@/server/services/storage";
@@ -130,10 +130,9 @@ export default async function ComposerPage({
       }
     }
     comments = await listCommentsForPost(ctx, draft.id);
-    members = (await listOrgMembers(ctx)).map((m) => ({
-      id: m.id,
-      name: m.name,
-    }));
+    // E3 @mention picker: members ASSIGNED to this brand (not org-wide), so you
+    // only mention people who work on — and can open — this brand's posts.
+    members = await listBrandMembers(ctx, brandId);
   }
 
   return (

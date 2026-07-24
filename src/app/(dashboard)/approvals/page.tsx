@@ -10,11 +10,13 @@ import { isPlatform, PLATFORMS, type Platform } from "@/lib/platforms/config";
 import { getAuthCtx } from "@/server/auth/context";
 import { can } from "@/server/auth/authorize";
 import { listSocialAccountsForBrands } from "@/server/dal/accounts";
-import { listBrandIdsForMember } from "@/server/dal/brand-members";
+import {
+  listBrandIdsForMember,
+  listBrandMembersForBrands,
+} from "@/server/dal/brand-members";
 import { listBrands } from "@/server/dal/brands";
 import { listCommentsForPosts, type CommentView } from "@/server/dal/comments";
 import { getMediaByIds } from "@/server/dal/media";
-import { listOrgMembers } from "@/server/dal/org";
 import { listPostsForReview, type ReviewPost } from "@/server/dal/posts";
 import { toMediaAssetView } from "@/server/media-views";
 
@@ -120,10 +122,12 @@ export default async function ApprovalsPage({
   );
   const commentsByPost: Record<string, CommentView[]> = {};
   for (const [postId, list] of commentsMap) commentsByPost[postId] = list;
-  const members = (await listOrgMembers(ctx)).map((m) => ({
-    id: m.id,
-    name: m.name,
-  }));
+  // E3 @mention picker, keyed by brand (the queue spans brands): each post's
+  // thread offers the members ASSIGNED to that post's brand, not org-wide.
+  const membersByBrand: Record<string, { id: string; name: string }[]> = {};
+  for (const row of await listBrandMembersForBrands(ctx, queueBrandIds)) {
+    (membersByBrand[row.brandId] ??= []).push({ id: row.id, name: row.name });
+  }
 
   const count = posts.length;
   return (
@@ -165,7 +169,7 @@ export default async function ApprovalsPage({
           mediaAssets={mediaAssets}
           identities={identities}
           commentsByPost={commentsByPost}
-          members={members}
+          membersByBrand={membersByBrand}
           canComment={can(ctx, "post:create")}
           // Always true past the page gate above; the mutating actions
           // (approvePost/requestChanges) still re-enforce post:approve server-side.

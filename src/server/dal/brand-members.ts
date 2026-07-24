@@ -1,11 +1,11 @@
 import "server-only";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db/db";
-import { member } from "@/db/schemas/auth";
+import { member, user } from "@/db/schemas/auth";
 import { brandMembers } from "@/db/schemas/brands";
 import { NotFoundError } from "@/server/domain/errors";
 import { recordAuditEvent } from "./audit";
-import { assertBrandAccess, orgScope } from "./scope";
+import { assertBrandAccess, brandScope, orgScope } from "./scope";
 import type { AuthCtx } from "./types";
 
 /**
@@ -78,6 +78,48 @@ export async function listBrandMemberIds(
     .from(brandMembers)
     .where(and(orgScope(ctx, brandMembers), eq(brandMembers.brandId, brandId)));
   return rows.map((r) => r.memberId);
+}
+
+/** A brand-assigned member with display identity (for the @mention picker, E3). */
+export type BrandMember = { id: string; name: string };
+
+/**
+ * Members ASSIGNED to a set of brands with their display names (E3 @mention
+ * picker), as flat `{ brandId, id, name }` rows for the caller to group. Joins
+ * brand_members → member → user; org-scoped + brandScope (defense-in-depth) so a
+ * creator only ever resolves their assigned brands. Empty input → no query.
+ * Any role may be assigned (brand_members holds owner/admin/approver/creator —
+ * the brand's team roster), so this is the brand's collaborators, not just its
+ * creators.
+ */
+export async function listBrandMembersForBrands(
+  ctx: AuthCtx,
+  brandIds: string[],
+): Promise<{ brandId: string; id: string; name: string }[]> {
+  if (brandIds.length === 0) return [];
+  return db
+    .select({ brandId: brandMembers.brandId, id: member.id, name: user.name })
+    .from(brandMembers)
+    .innerJoin(member, eq(member.id, brandMembers.memberId))
+    .innerJoin(user, eq(user.id, member.userId))
+    .where(
+      and(
+        orgScope(ctx, brandMembers),
+        inArray(brandMembers.brandId, brandIds),
+        brandScope(ctx, brandMembers.brandId),
+      ),
+    )
+    .orderBy(user.name);
+}
+
+/** Members assigned to ONE brand (E3 @mention picker) — the single-brand wrapper. */
+export async function listBrandMembers(
+  ctx: AuthCtx,
+  brandId: string,
+): Promise<BrandMember[]> {
+  assertBrandAccess(ctx, brandId);
+  const rows = await listBrandMembersForBrands(ctx, [brandId]);
+  return rows.map(({ id, name }) => ({ id, name }));
 }
 
 /**
