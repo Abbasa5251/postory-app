@@ -1,6 +1,7 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
@@ -59,13 +60,43 @@ export function MentionTextarea({
     setActive(0);
   }
 
-  // All name-matching members (no cap) — the listbox below is height-bounded
-  // and scrolls (max-h-48 overflow-y-auto), so a large team stays usable.
+  // All name-matching members (no cap) — the listbox is height-bounded and
+  // scrolls (max-h-48 overflow-y-auto), so a large team stays usable.
   const matches = query
     ? members.filter((m) =>
         m.name.toLowerCase().includes(query.text.toLowerCase()),
       )
     : [];
+  const open = matches.length > 0;
+
+  // The listbox is rendered in a portal with FIXED positioning so it isn't
+  // clipped by an ancestor's overflow (the composer's Discussion card, the
+  // approvals dialog's scroll area). Track the textarea's viewport rect and keep
+  // the popup aligned to it on scroll/resize.
+  const [rect, setRect] = useState<{
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
+  useEffect(() => {
+    // Only measure while open; the portal render also guards on `open`, so a
+    // stale rect from a previous open never shows (no setState-on-close needed).
+    if (!open) return;
+    const update = () => {
+      const el = ref.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      setRect({ top: r.bottom + 4, left: r.left, width: r.width });
+    };
+    update();
+    // `capture` so a scroll in ANY ancestor (the dialog/card) repositions it.
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [open, query]);
 
   function pick(member: MentionMember) {
     if (!query) return;
@@ -126,37 +157,48 @@ export function MentionTextarea({
           requestAnimationFrame(() => setQuery(null));
         }}
       />
-      {matches.length > 0 && (
-        <ul
-          id={listboxId}
-          role="listbox"
-          className="absolute z-50 mt-1 max-h-48 w-56 overflow-y-auto rounded-md border bg-popover p-1 shadow-md"
-        >
-          {matches.map((m, i) => (
-            <li key={m.id}>
-              <button
-                type="button"
-                id={optionId(i)}
-                role="option"
-                aria-selected={i === active}
-                // onMouseDown (not onClick) so it fires before the textarea blur.
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  pick(m);
-                }}
-                className={cn(
-                  "w-full rounded-sm px-2 py-1.5 text-left text-sm",
-                  i === active
-                    ? "bg-accent text-accent-foreground"
-                    : "hover:bg-accent hover:text-accent-foreground",
-                )}
-              >
-                {m.name}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      {open &&
+        rect &&
+        createPortal(
+          <ul
+            id={listboxId}
+            role="listbox"
+            style={{
+              position: "fixed",
+              top: rect.top,
+              left: rect.left,
+              // Cap at a menu-like width; shrink to the field only when narrower
+              // (don't stretch across a full-width composer textarea).
+              width: Math.min(rect.width, 288),
+            }}
+            className="z-50 max-h-48 overflow-y-auto rounded-md border bg-popover p-1 shadow-md"
+          >
+            {matches.map((m, i) => (
+              <li key={m.id}>
+                <button
+                  type="button"
+                  id={optionId(i)}
+                  role="option"
+                  aria-selected={i === active}
+                  // onMouseDown (not onClick) so it fires before the textarea blur.
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    pick(m);
+                  }}
+                  className={cn(
+                    "w-full rounded-sm px-2 py-1.5 text-left text-sm",
+                    i === active
+                      ? "bg-accent text-accent-foreground"
+                      : "hover:bg-accent hover:text-accent-foreground",
+                  )}
+                >
+                  {m.name}
+                </button>
+              </li>
+            ))}
+          </ul>,
+          document.body,
+        )}
     </div>
   );
 }
