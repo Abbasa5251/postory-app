@@ -59,10 +59,12 @@ export function MentionTextarea({
     setActive(0);
   }
 
+  // All name-matching members (no cap) — the listbox below is height-bounded
+  // and scrolls (max-h-48 overflow-y-auto), so a large team stays usable.
   const matches = query
-    ? members
-        .filter((m) => m.name.toLowerCase().includes(query.text.toLowerCase()))
-        .slice(0, 6)
+    ? members.filter((m) =>
+        m.name.toLowerCase().includes(query.text.toLowerCase()),
+      )
     : [];
 
   function pick(member: MentionMember) {
