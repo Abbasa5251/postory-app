@@ -14,7 +14,10 @@ import { resolveMediaAssets } from "@/lib/platforms/preview";
 import type { PostContent } from "@/lib/validation/posts";
 import { insertText } from "@/lib/caption-helpers";
 import { cn } from "@/lib/utils";
+import type { CommentView } from "@/server/dal/comments";
 import { saveDraft, submitPost } from "@/server/actions/posts";
+import { CommentThread } from "../comments/comment-thread";
+import type { MentionMember } from "../comments/mention-textarea";
 import { AdaptCard } from "./adapt-card";
 import { AiCopyCard } from "./ai-copy-card";
 import { AiImageCard } from "./ai-image-card";
@@ -54,6 +57,12 @@ type ComposerProps = {
    * (E1) — shown as a banner so the creator sees what to fix before resubmitting.
    */
   changeRequest?: { note: string | null; by: string | null } | null;
+  /** E3: the post's comments (only present when editing a saved post). */
+  comments?: CommentView[];
+  /** E3: org members for the @mention typeahead. */
+  members?: MentionMember[];
+  /** E3: whether the viewer may comment (post:create). */
+  canComment?: boolean;
 };
 
 function captionsFromContent(content: PostContent | undefined) {
@@ -83,6 +92,9 @@ export function Composer({
   libraryAssets,
   brandLogoUrl,
   changeRequest,
+  comments,
+  members,
+  canComment,
 }: ComposerProps) {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
@@ -527,6 +539,26 @@ export function Composer({
           </div>
         </div>
       </div>
+
+      {/* E3 — discussion + @mentions, only for a saved post (a brand-new,
+          unsaved draft has nothing to anchor comments to). */}
+      {initial?.postId && (
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle className="text-xs font-bold tracking-wide text-muted-foreground uppercase">
+              Discussion
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CommentThread
+              postId={initial.postId}
+              comments={comments ?? []}
+              members={members ?? []}
+              canComment={canComment ?? false}
+            />
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

@@ -99,6 +99,28 @@ export const roles = {
 } satisfies Record<Role, unknown>;
 
 /**
+ * Roles that hold `post:approve` — the internal reviewers (§7 matrix). Single
+ * source for "who reviews": E3 emails these members when a post is submitted.
+ * Derived by inspection of the role grants above (owner/admin/approver carry
+ * post:approve; creator does not) — keep in sync if the matrix changes.
+ */
+export const REVIEWER_ROLES = ["owner", "admin", "approver"] as const;
+
+/**
+ * Does a raw better-auth `member.role` string grant review rights? Handles the
+ * plugin's comma-joined multi-role strings ("member,approver"). Display/routing
+ * only (who to notify) — never an authorization decision (those go through
+ * `authorize()` on a real ctx).
+ */
+export function roleGrantsReview(role: string | null | undefined): boolean {
+  const reviewer: readonly string[] = REVIEWER_ROLES;
+  return (role ?? "")
+    .split(",")
+    .map((part) => part.trim())
+    .some((part) => reviewer.includes(part));
+}
+
+/**
  * ADR-011/A4: reject any role string outside `roles`. better-auth's built-in
  * "member" passes the org plugin's own validation (it's in the default role
  * set) but maps to ZERO permissions here — an invite carrying it would create

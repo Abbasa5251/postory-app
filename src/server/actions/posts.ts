@@ -16,17 +16,56 @@ import {
   submitPost as submitPostDal,
   updateDraft,
 } from "@/server/dal/posts";
+import type { MemberCtx } from "@/server/dal/types";
+import { inngest } from "@/server/jobs/client";
+import { postNotificationEvent } from "@/server/jobs/events";
+import { log } from "@/server/services/observability";
+import { revalidatePostSurfaces } from "./revalidate";
 import { withAction } from "./with-action";
 
 /**
- * Revalidate the surfaces a post transition can affect: the brand composer
- * (edit lock changes), the brand posts list, and the cross-brand review queue
- * (E2 — a top-level, non-brand-scoped route).
+ * Fire an E3 lifecycle notification (submit/approve/request-changes) off the
+ * request path (§16 / ADR-003 — email is a network call, the job sends it). The
+ * event carries only trusted ids from the ctx; the job resolves recipients +
+ * content from the org-scoped DAL and excludes the actor. Best-effort: a failed
+ * enqueue never fails the transition the user already committed — it's logged
+ * and swallowed (the notification is a side-effect, not the mutation).
  */
-function revalidatePostSurfaces(brandId: string): void {
-  revalidatePath(`/brands/${brandId}/composer`);
-  revalidatePath(`/brands/${brandId}/posts`);
-  revalidatePath("/approvals");
+async function notifyTransition(
+  ctx: MemberCtx,
+  kind: "submitted" | "approved" | "changes_requested",
+  post: { id: string; brandId: string; currentVersionId: string | null },
+  note?: string,
+): Promise<void> {
+  try {
+    await inngest.send(
+      postNotificationEvent.create(
+        {
+          kind,
+          orgId: ctx.orgId,
+          postId: post.id,
+          brandId: post.brandId,
+          actorMemberId: ctx.memberId,
+          note,
+        },
+        // Stable per (kind, post, version): a genuine re-submit after changes
+        // targets a NEW version → a new id → a new notification, while an
+        // accidental double-fire of the SAME transition is deduped by Inngest's
+        // 24h id window. A version-less draft can't be transitioned, so the
+        // fallback is unreachable in practice.
+        {
+          id: `notify:${kind}:${post.id}:${post.currentVersionId ?? "none"}`,
+        },
+      ),
+    );
+  } catch (error) {
+    log.error("failed to enqueue post notification", {
+      event: "post.notification.enqueue_failed",
+      kind,
+      postId: post.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 /**
@@ -74,6 +113,7 @@ export const submitPost = withAction(
     const post = await getDraftById(ctx, data.postId);
     const result = await submitPostDal(ctx, { postId: data.postId });
     revalidatePostSurfaces(post.brandId);
+    await notifyTransition(ctx, "submitted", post);
     return { id: result.id, status: result.status };
   },
 );
@@ -93,6 +133,7 @@ export const approvePost = withAction(
       note: data.note,
     });
     revalidatePostSurfaces(post.brandId);
+    await notifyTransition(ctx, "approved", post, data.note);
     return { id: result.id, status: result.status };
   },
 );
@@ -111,6 +152,7 @@ export const requestChanges = withAction(
       note: data.note,
     });
     revalidatePostSurfaces(post.brandId);
+    await notifyTransition(ctx, "changes_requested", post, data.note);
     return { id: result.id, status: result.status };
   },
 );

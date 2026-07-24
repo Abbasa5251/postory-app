@@ -9,6 +9,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -149,13 +150,61 @@ export const comments = pgTable(
       columns: [t.orgId, t.postId],
       foreignColumns: [posts.orgId, posts.id],
     }).onDelete("cascade"),
+    // Composite unique so child rows (comment_mentions) can carry a composite FK
+    // against (org_id, id) — the belt-and-suspenders tenancy pattern posts uses
+    // (§6.4). Without this the comment_mentions FK has no unique to reference.
+    unique("comments_org_id_id_key").on(t.orgId, t.id),
     index("comments_org_post_idx").on(t.orgId, t.postId),
     index("comments_post_created_idx").on(t.postId, t.createdAt),
   ],
 );
 
+/**
+ * comment_mentions (PRD §4, E3) — a comment @-mentions org members. A join row
+ * per (comment, member) so a future "posts where I'm mentioned" query is a plain
+ * index scan. Rows are derived from the comment body; they die with the comment
+ * or the member (cascade), never orphaned.
+ */
+export const commentMentions = pgTable(
+  "comment_mentions",
+  {
+    id: uuidV7Pk(),
+    orgId: orgId(),
+    commentId: uuid("comment_id").notNull(),
+    // NOT the nullable memberRef helper: a mention with no target is useless, so
+    // the row cascades away with the member (unlike attribution FKs, §6).
+    mentionedMemberId: text("mentioned_member_id")
+      .notNull()
+      .references(() => member.id, { onDelete: "cascade" }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    // Composite FK: the mentioned comment must live in this org (§6).
+    foreignKey({
+      name: "comment_mentions_org_comment_fkey",
+      columns: [t.orgId, t.commentId],
+      foreignColumns: [comments.orgId, comments.id],
+    }).onDelete("cascade"),
+    uniqueIndex("comment_mentions_comment_member_uidx").on(
+      t.commentId,
+      t.mentionedMemberId,
+    ),
+    // Future mentions-inbox: "which comments mention me", org-scoped.
+    index("comment_mentions_org_member_idx").on(t.orgId, t.mentionedMemberId),
+  ],
+);
+
 export const approvalsRelations = defineRelationsPart(
-  { portalTokens, approvals, comments, brands, posts, postVersions, member },
+  {
+    portalTokens,
+    approvals,
+    comments,
+    commentMentions,
+    brands,
+    posts,
+    postVersions,
+    member,
+  },
   (r) => ({
     portalTokens: {
       brand: r.one.brands({
@@ -193,6 +242,20 @@ export const approvalsRelations = defineRelationsPart(
       authorToken: r.one.portalTokens({
         from: r.comments.authorTokenId,
         to: r.portalTokens.id,
+      }),
+      mentions: r.many.commentMentions({
+        from: r.comments.id,
+        to: r.commentMentions.commentId,
+      }),
+    },
+    commentMentions: {
+      comment: r.one.comments({
+        from: r.commentMentions.commentId,
+        to: r.comments.id,
+      }),
+      mentionedMember: r.one.member({
+        from: r.commentMentions.mentionedMemberId,
+        to: r.member.id,
       }),
     },
   }),

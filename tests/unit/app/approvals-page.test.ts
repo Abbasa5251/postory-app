@@ -20,20 +20,27 @@ const { redirect } = vi.hoisted(() => ({
 const { listPostsForReview } = vi.hoisted(() => ({
   listPostsForReview: vi.fn(),
 }));
-const { listBrandIdsForMember } = vi.hoisted(() => ({
+const { listBrandIdsForMember, listBrandMembersForBrands } = vi.hoisted(() => ({
   listBrandIdsForMember: vi.fn(),
+  listBrandMembersForBrands: vi.fn(async () => []),
 }));
 const { listBrands } = vi.hoisted(() => ({ listBrands: vi.fn() }));
 
 vi.mock("next/navigation", () => ({ redirect }));
 vi.mock("@/server/auth/context", () => ({ getAuthCtx }));
 vi.mock("@/server/dal/posts", () => ({ listPostsForReview }));
-vi.mock("@/server/dal/brand-members", () => ({ listBrandIdsForMember }));
+vi.mock("@/server/dal/brand-members", () => ({
+  listBrandIdsForMember,
+  listBrandMembersForBrands,
+}));
 vi.mock("@/server/dal/brands", () => ({ listBrands }));
 vi.mock("@/server/dal/accounts", () => ({
   listSocialAccountsForBrands: vi.fn(async () => []),
 }));
 vi.mock("@/server/dal/media", () => ({ getMediaByIds: vi.fn(async () => []) }));
+vi.mock("@/server/dal/comments", () => ({
+  listCommentsForPosts: vi.fn(async () => new Map()),
+}));
 vi.mock("@/server/media-views", () => ({ toMediaAssetView: vi.fn() }));
 vi.mock("@/components/features/approvals/search-params", () => ({
   loadApprovalFilters: vi.fn(async () => ({ workspace: null, platform: null })),

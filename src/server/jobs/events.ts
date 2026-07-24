@@ -18,6 +18,35 @@ import { postPlatformSchema } from "@/lib/validation/posts";
 export const healthPingEvent = eventType("system/health.ping");
 
 /**
+ * Post notification requested (E3). Emitted after a DB write by the post
+ * transition actions (submit/approve/request-changes) and the comment action
+ * (mention), because email is a network call that must run in a job, not a
+ * request handler (§16 / ADR-003). The job resolves recipients + email content
+ * from the DAL under a system ctx — payload fields are server-derived/trusted
+ * (orgId/postId/brandId/actorMemberId from the ctx, ids validated in the DAL),
+ * never raw client input.
+ *
+ * `kind` picks the recipients + template: submitted → the org's reviewers;
+ * approved / changes_requested → the post author; mention → the mentioned
+ * members. The actor is excluded from their own event in the job.
+ */
+export const postNotificationEvent = eventType("post/notification.requested", {
+  schema: z.object({
+    kind: z.enum(["submitted", "approved", "changes_requested", "mention"]),
+    orgId: z.string(),
+    postId: z.string(),
+    brandId: z.string(),
+    // Null for a system-originated transition; excluded from recipients.
+    actorMemberId: z.string().nullable(),
+    // mention only: the comment + its validated mentioned members.
+    commentId: z.string().optional(),
+    mentionedMemberIds: z.array(z.string()).optional(),
+    // approve/changes: the reviewer's note, surfaced in the email.
+    note: z.string().optional(),
+  }),
+});
+
+/**
  * Already-normalized brand voice (B2) shared by the copy + adapt events — a
  * transform-free mirror of VoiceProfile so the Inngest schema (no transforms
  * allowed) accepts it. The action validates the stored jsonb before sending.

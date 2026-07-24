@@ -1,8 +1,11 @@
 import "server-only";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { cache } from "react";
 import { db } from "@/db/db";
 import { member, organization, user } from "@/db/schemas/auth";
+import { posts } from "@/db/schemas/posts";
+import { roleGrantsReview } from "@/server/auth/permissions";
+import { orgScope } from "./scope";
 import type { AuthCtx } from "./types";
 
 /**
@@ -63,6 +66,73 @@ export async function listOrgMembers(ctx: AuthCtx): Promise<OrgMember[]> {
     .innerJoin(user, eq(member.userId, user.id))
     .where(eq(member.organizationId, ctx.orgId))
     .orderBy(user.name);
+}
+
+/**
+ * A member to notify by email (E3). memberId is the better-auth member.id used
+ * to exclude the actor from their own event's recipients.
+ */
+export type NotifyRecipient = {
+  memberId: string;
+  name: string;
+  email: string;
+};
+
+/**
+ * The org's internal reviewers (owner/admin/approver — roleGrantsReview),
+ * mapped to notify recipients. A building block: the notification job narrows
+ * these to the ones ASSIGNED to a post's brand (brand_members) before emailing,
+ * mirroring the E2 approvals surface (reviewer visibility is brand-scoped for
+ * every role). Reuses listOrgMembers (≤10 seats, one read). Usable from a
+ * system ctx (the notification job).
+ */
+export async function listOrgReviewers(
+  ctx: AuthCtx,
+): Promise<NotifyRecipient[]> {
+  const members = await listOrgMembers(ctx);
+  return members
+    .filter((m) => roleGrantsReview(m.role))
+    .map((m) => ({ memberId: m.id, name: m.name, email: m.email }));
+}
+
+/**
+ * The author of a post (posts.created_by → member → user), org-scoped, or null
+ * if the post is gone or its author's seat was removed (createdBy SET NULL →
+ * the inner join drops the row: no one to notify). E3 emails the author on
+ * approve / request-changes. Usable from a system ctx (the notification job).
+ */
+export async function getPostAuthor(
+  ctx: AuthCtx,
+  postId: string,
+): Promise<NotifyRecipient | null> {
+  const [row] = await db
+    .select({ memberId: member.id, name: user.name, email: user.email })
+    .from(posts)
+    .innerJoin(member, eq(member.id, posts.createdBy))
+    .innerJoin(user, eq(user.id, member.userId))
+    .where(and(orgScope(ctx, posts), eq(posts.id, postId)))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * Members of THIS org among the given ids, as notify recipients. Org-scoped
+ * (member.organization_id — better-auth's tenant column), so a cross-org id
+ * silently drops out. Powers both @mention target validation (comments DAL)
+ * and mention-email resolution (the notification job). Empty input → no query.
+ */
+export async function getMembersByIds(
+  ctx: AuthCtx,
+  memberIds: string[],
+): Promise<NotifyRecipient[]> {
+  if (memberIds.length === 0) return [];
+  return db
+    .select({ memberId: member.id, name: user.name, email: user.email })
+    .from(member)
+    .innerJoin(user, eq(member.userId, user.id))
+    .where(
+      and(eq(member.organizationId, ctx.orgId), inArray(member.id, memberIds)),
+    );
 }
 
 /**

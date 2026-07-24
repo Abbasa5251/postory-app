@@ -3,6 +3,7 @@ import { adaptCopyJob } from "./generation/copy.adapt.requested";
 import { generateCopyJob } from "./generation/copy.requested";
 import { generateImageJob } from "./generation/image.requested";
 import { orphanMediaCleanupJob } from "./media/orphan.cleanup";
+import { postNotificationJob } from "./notification/post-notification";
 import { healthPing } from "./system/health.ping";
 
 /**
@@ -19,4 +20,5 @@ export const functions = [
   adaptCopyJob,
   generateImageJob,
   orphanMediaCleanupJob,
+  postNotificationJob,
 ];

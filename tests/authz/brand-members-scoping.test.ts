@@ -3,6 +3,8 @@ import {
   assignMember,
   listBrandIdsForMember,
   listBrandMemberIds,
+  listBrandMembers,
+  listBrandMembersForBrands,
   resolveCreatorBrandIds,
   unassignMember,
 } from "@/server/dal/brand-members";
@@ -62,6 +64,60 @@ describe("listBrandMemberIds — org + brand scoped", () => {
         memberCtx({ role: "creator", brandIds: ["b1"] }),
         "b9",
       ),
+    ).rejects.toThrow(NotFoundError);
+    expect(select).not.toHaveBeenCalled();
+  });
+});
+
+describe("listBrandMembersForBrands — org + brand scoped (E3 @mention picker)", () => {
+  it("filters on org_id = ctx.orgId AND brand_id IN (...) and returns id+name", async () => {
+    const chain = makeSelectChain(select, [
+      { brandId: "b1", id: "m1", name: "Ann" },
+      { brandId: "b1", id: "m2", name: "Bo" },
+    ]);
+    const rows = await listBrandMembersForBrands(adminAll(), ["b1", "b2"]);
+
+    const query = renderedWhere(chain);
+    expect(query.sql).toContain('"brand_members"."org_id" = $1');
+    expect(query.sql).toContain('"brand_members"."brand_id" in ($2, $3)');
+    expect(query.params).toEqual(["org_1", "b1", "b2"]);
+    expect(rows).toEqual([
+      { brandId: "b1", id: "m1", name: "Ann" },
+      { brandId: "b1", id: "m2", name: "Bo" },
+    ]);
+  });
+
+  it("empty input runs no query", async () => {
+    const rows = await listBrandMembersForBrands(adminAll(), []);
+    expect(rows).toEqual([]);
+    expect(select).not.toHaveBeenCalled();
+  });
+
+  it("a creator is narrowed to assigned brands (brandScope defense-in-depth)", async () => {
+    const chain = makeSelectChain(select, []);
+    await listBrandMembersForBrands(
+      memberCtx({ role: "creator", brandIds: ["b1"] }),
+      ["b1"],
+    );
+    // orgScope + the requested inArray + the creator's brandScope inArray.
+    const query = renderedWhere(chain);
+    expect(query.sql).toContain('"brand_members"."org_id"');
+    expect(query.params).toContain("org_1");
+    expect(query.params).toContain("b1");
+  });
+});
+
+describe("listBrandMembers — single brand, asserts access", () => {
+  it("returns id+name for one brand", async () => {
+    makeSelectChain(select, [{ brandId: "b1", id: "m1", name: "Ann" }]);
+    const rows = await listBrandMembers(adminAll(), "b1");
+    expect(rows).toEqual([{ id: "m1", name: "Ann" }]);
+  });
+
+  it("rejects a caller without access to the brand before any query", async () => {
+    makeSelectChain(select, []);
+    await expect(
+      listBrandMembers(memberCtx({ role: "creator", brandIds: ["b1"] }), "b9"),
     ).rejects.toThrow(NotFoundError);
     expect(select).not.toHaveBeenCalled();
   });
